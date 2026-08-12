@@ -22,7 +22,9 @@ billed 24/7), so instead each fallback session:
 2. Installs tools and clones only the repo needed for that task
    (`infra/startup-tools.sh`, run automatically as the instance's
    startup-script)
-3. Gets used over SSH (via GCP IAP, no external IP)
+3. Gets used over SSH (via GCP IAP; the instance does have a normal
+   ephemeral external IP so the startup-script can reach the public
+   internet for tool installation — see note below)
 4. Gets deleted (`infra/teardown-fallback-vm.sh`) as soon as the task is done
 
 No custom image or standing disk is kept between sessions. This trades a
@@ -33,22 +35,47 @@ when the fallback isn't in use.
 
 Requires a GCP project with billing enabled, the Compute Engine API
 enabled, and a firewall rule allowing SSH only from the IAP range
-(`35.235.240.0/20`, tcp:22) — no other inbound access, no external IP on
-the instances.
+(`35.235.240.0/20`, tcp:22) — no other inbound access, regardless of the
+instance having a public IP.
+
+**Important — delete the auto-created default firewall rules.** Every new
+GCP project's `default` VPC comes with `default-allow-ssh` (tcp:22 from
+`0.0.0.0/0`, i.e. the whole internet) and `default-allow-rdp` already
+present. These are *additional* ALLOW rules, not overridden by a
+narrower one — so leaving them in place means the instance is reachable
+from the entire internet on port 22 regardless of the IAP-only rule
+above (found by actually checking `gcloud compute firewall-rules list`
+after standing this up — it looked IAP-only until this was checked).
+Delete both once per project:
+```bash
+gcloud compute firewall-rules delete default-allow-ssh default-allow-rdp --project=$PROJECT_ID
+```
+
+**Why the instance has an external IP:** with no external IP and no NAT
+gateway, the instance has zero route to the public internet, so the
+startup-script's apt/GitHub/npm installs fail outright (confirmed by
+testing). Adding a Cloud NAT gateway would fix that, but Cloud NAT bills
+a flat ~$32/month for the gateway itself regardless of usage — the
+opposite of what an ephemeral, pay-only-when-used VM is for. A normal
+*ephemeral* (not reserved/static) external IP is free while the instance
+is running, so that's what's used instead. This doesn't reopen the
+instance to inbound traffic: the firewall rule still only allows SSH from
+the IAP range, on any IP the instance happens to have.
 
 ### Usage
 
 ```bash
 export PROJECT_ID=your-project-id
-export TASK_REPO_URL=https://github.com/you/your-repo.git  # optional
 
 ./infra/spin-up-fallback-vm.sh
 # ... wait a few minutes for startup-script to finish, then:
 gcloud compute ssh <instance-name> --project=$PROJECT_ID --zone=asia-northeast1-a --tunnel-through-iap
 
-# On first login, authenticate interactively — credentials are never baked
-# into the image or instance metadata:
+# On first login, authenticate and clone what you need interactively —
+# credentials are never baked into the image or instance metadata, and
+# repos aren't cloned automatically since they're private:
 gh auth login
+git clone https://github.com/you/your-repo.git /opt/work/your-repo
 claude  # follow login prompt
 codex   # follow login prompt
 

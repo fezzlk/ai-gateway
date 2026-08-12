@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
 # Runs once per ephemeral VM boot (via instance startup-script metadata).
-# Installs the tools needed for a headless Claude Code / Codex CLI session
-# and clones the repos needed for the current task.
+# Installs the tools needed for a headless Claude Code / Codex CLI session.
 #
-# Intentionally contains NO credentials or secrets: instance metadata
-# (including startup-script content) is readable in plaintext by anyone
-# with describe access to the instance, so auth (gh auth login, Claude/Codex
-# login) must happen interactively after SSH, never here.
+# Does NOT clone any repos, even agent-kit: repos on this GitHub account are
+# private, and cloning them needs `gh auth login` first. Intentionally
+# contains NO credentials or secrets either — instance metadata (including
+# startup-script content) is readable in plaintext by anyone with describe
+# access to the instance — so both auth and repo cloning happen
+# interactively after SSH, never here. (An earlier version tried to
+# git-clone agent-kit unauthenticated here; it failed outright with "could
+# not read Username for 'https://github.com'" since the repo is private.)
 set -euo pipefail
-
-# Custom metadata isn't exported as env vars on boot; fetch it from the
-# metadata server instead.
-TASK_REPO_URL="$(curl -fsS -H "Metadata-Flavor: Google" \
-  "http://metadata.google.internal/computeMetadata/v1/instance/attributes/task-repo-url" \
-  2>/dev/null || true)"
-WORKDIR="/opt/work"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -42,13 +38,6 @@ apt-get install -y --no-install-recommends nodejs
 # CLIs
 npm install -g @anthropic-ai/claude-code @openai/codex
 
-# Repos: only agent-kit (shared rules/memory pointers) + the one repo needed
-# for this task. Syncing *all* repos is out of scope here (tracked as FEZ-78).
-mkdir -p "$WORKDIR"
-git clone https://github.com/fezzlk/agent-kit.git "$WORKDIR/agent-kit"
+mkdir -p /opt/work
 
-if [ -n "$TASK_REPO_URL" ]; then
-  git clone "$TASK_REPO_URL" "$WORKDIR/task-repo"
-fi
-
-echo "startup-tools.sh: done. SSH in and run 'gh auth login' + Claude/Codex login before use."
+echo "startup-tools.sh: done. SSH in, run 'gh auth login', then clone whatever repos you need into /opt/work before starting Claude/Codex."
