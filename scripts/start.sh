@@ -11,9 +11,14 @@ set -e
   --ssh=false
 
 # Secret Manager volume mounts are read-only (~0444); ssh refuses keys that
-# aren't 0600, so copy to a private tmpfs path before use.
+# aren't 0600, so copy to a private tmpfs path before use. `install`/`cp`
+# stat the source before and after copying and abort with "replaced while
+# being copied" against Cloud Run's secret volume mount (its FUSE layer
+# doesn't present a stable inode across the copy) — `cat` just streams
+# bytes and doesn't hit that check.
 if [ -f "${MAC_SSH_KEY_SECRET_PATH:-/secrets/mac_ssh_key}" ]; then
-  install -m 600 "${MAC_SSH_KEY_SECRET_PATH:-/secrets/mac_ssh_key}" /tmp/mac_ssh_key
+  cat "${MAC_SSH_KEY_SECRET_PATH:-/secrets/mac_ssh_key}" > /tmp/mac_ssh_key
+  chmod 600 /tmp/mac_ssh_key
 fi
 
 mkdir -p /root/.ssh
