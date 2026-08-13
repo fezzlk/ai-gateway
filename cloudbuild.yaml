@@ -9,6 +9,11 @@ substitutions:
   _MAC_SSH_HOST: ""
   _MAC_SSH_USER: ""
   _MAC_SSH_KNOWN_HOST_LINE: ""
+  # Absolute path to `claude` on the Mac. Non-interactive SSH commands only
+  # source ~/.zshenv (not ~/.zshrc), so a PATH built by .zshrc — e.g. via
+  # nvm or a user-local bin dir — won't be visible; an absolute path sidesteps
+  # that instead of requiring shell-config changes on the Mac.
+  _CLAUDE_BIN: "claude"
 
 steps:
   - id: "build"
@@ -49,7 +54,7 @@ steps:
       - "--max-instances=3"
       - "--timeout=3600"
       - "--service-account=ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com"
-      - "--set-env-vars=MAC_SSH_HOST=${_MAC_SSH_HOST},MAC_SSH_USER=${_MAC_SSH_USER},MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}"
+      - "--set-env-vars=MAC_SSH_HOST=${_MAC_SSH_HOST},MAC_SSH_USER=${_MAC_SSH_USER},MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE},CLAUDE_BIN=${_CLAUDE_BIN}"
       - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest"
     waitFor: ["push"]
 
