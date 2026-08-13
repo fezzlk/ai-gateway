@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ai-gateway</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+
+  <!-- iOS Safari ignores manifest.json for Add to Home Screen styling -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ai-gateway" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main>
+    <h1>ai-gateway</h1>
+    <p class="env-badge" id="env-badge">via Mac</p>
+
+    <form id="run-form">
+      <textarea id="prompt" placeholder="What should Claude do?" rows="4" required></textarea>
+      <button type="submit" id="submit-btn">Run</button>
+    </form>
+
+    <pre id="output"></pre>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

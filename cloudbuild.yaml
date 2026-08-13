@@ -1,0 +1,84 @@
+substitutions:
+  _SERVICE_NAME: "ai-gateway"
+  _REGION: "asia-northeast1"
+  _REGISTRY: "asia-northeast1-docker.pkg.dev/${PROJECT_ID}/ai-gateway"
+  # Non-secret but personal (Tailscale hostname of your Mac, SSH user, and
+  # the Mac's SSH host-key line for pinning). Set the real values on the
+  # Cloud Build trigger's substitutions, never here, so this file stays
+  # generic/public per this repo's own design policy.
+  _MAC_SSH_HOST: ""
+  _MAC_SSH_USER: ""
+  _MAC_SSH_KNOWN_HOST_LINE: ""
+
+steps:
+  - id: "build"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-t"
+      - "${_REGISTRY}/app:${SHORT_SHA}"
+      - "-t"
+      - "${_REGISTRY}/app:latest"
+      - "."
+
+  - id: "push"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGISTRY}/app"
+    waitFor: ["build"]
+
+  # --timeout=3600 (Cloud Run's max) is intentional, not an oversight: a
+  # headless Claude Code/Codex run over SSH can legitimately take minutes,
+  # and Cloud Run kills a request at its own timeout regardless of what the
+  # app is doing. Billing is per actual request duration, not this cap.
+  - id: "deploy"
+    name: "gcr.io/cloud-builders/gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "${_SERVICE_NAME}"
+      - "--image=${_REGISTRY}/app:${SHORT_SHA}"
+      - "--region=${_REGION}"
+      - "--platform=managed"
+      - "--allow-unauthenticated"
+      - "--memory=512Mi"
+      - "--cpu=1"
+      - "--min-instances=0"
+      - "--max-instances=3"
+      - "--timeout=3600"
+      - "--service-account=ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com"
+      - "--set-env-vars=MAC_SSH_HOST=${_MAC_SSH_HOST},MAC_SSH_USER=${_MAC_SSH_USER},MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}"
+      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest"
+    waitFor: ["push"]
+
+  - id: "smoke-test"
+    name: "gcr.io/cloud-builders/gcloud"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} --format='value(status.url)')
+        echo "Smoke testing: $${SERVICE_URL}/health"
+        for i in 1 2 3 4 5; do
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$${SERVICE_URL}/health")
+          if [ "$$STATUS" = "200" ]; then
+            echo "Health check passed (attempt $$i)"
+            exit 0
+          fi
+          echo "Attempt $$i: got $$STATUS, retrying in 5s..."
+          sleep 5
+        done
+        echo "Smoke test failed after 5 attempts"
+        exit 1
+    waitFor: ["deploy"]
+
+images:
+  - "${_REGISTRY}/app:${SHORT_SHA}"
+  - "${_REGISTRY}/app:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
