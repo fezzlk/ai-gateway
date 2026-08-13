@@ -37,6 +37,11 @@ def run_remote_claude(prompt: str, resume_session_id: Optional[str] = None):
     tailscaled with no extra client-side proxy plumbing needed.
     """
     remote_cmd = build_claude_cmdline(prompt, resume_session_id)
+    if config.CLAUDE_CODE_OAUTH_TOKEN:
+        # SSH does not forward local env vars to the remote command by
+        # default, so the token is injected as a leading env-var assignment
+        # on the remote command line instead of via `ssh -o SendEnv=`.
+        remote_cmd = f"CLAUDE_CODE_OAUTH_TOKEN={shlex.quote(config.CLAUDE_CODE_OAUTH_TOKEN)} {remote_cmd}"
 
     ssh_cmd = [
         "ssh",

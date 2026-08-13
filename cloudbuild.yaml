@@ -55,7 +55,7 @@ steps:
       - "--timeout=3600"
       - "--service-account=ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com"
       - "--set-env-vars=MAC_SSH_HOST=${_MAC_SSH_HOST},MAC_SSH_USER=${_MAC_SSH_USER},MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE},CLAUDE_BIN=${_CLAUDE_BIN}"
-      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest"
+      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest"
     waitFor: ["push"]
 
   - id: "smoke-test"
