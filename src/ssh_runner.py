@@ -43,6 +43,13 @@ def run_remote_claude(prompt: str, resume_session_id: Optional[str] = None):
         # on the remote command line instead of via `ssh -o SendEnv=`.
         remote_cmd = f"CLAUDE_CODE_OAUTH_TOKEN={shlex.quote(config.CLAUDE_CODE_OAUTH_TOKEN)} {remote_cmd}"
 
+    if config.GITHUB_PERSONAL_ACCESS_TOKEN:
+        # Same rationale as CLAUDE_CODE_OAUTH_TOKEN above: the GitHub MCP
+        # server's `gh auth token` can't reach the macOS keychain over
+        # non-interactive SSH, so start_github_mcp.sh picks up this
+        # pre-set env var instead.
+        remote_cmd = f"GITHUB_PERSONAL_ACCESS_TOKEN={shlex.quote(config.GITHUB_PERSONAL_ACCESS_TOKEN)} {remote_cmd}"
+
     ssh_cmd = [
         "ssh",
         "-o", "ProxyCommand=tailscale nc %h %p",

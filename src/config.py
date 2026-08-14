@@ -13,6 +13,10 @@ CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 # explicitly into the SSH remote command's environment (SSH does not forward
 # local env vars by default) — see ssh_runner.py.
 CLAUDE_CODE_OAUTH_TOKEN = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+# Fine-grained GitHub PAT, injected the same way as CLAUDE_CODE_OAUTH_TOKEN:
+# `gh auth token` (used by the GitHub MCP server) reads from the macOS
+# keychain, which non-interactive SSH sessions can't reach.
+GITHUB_PERSONAL_ACCESS_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 CLAUDE_ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "Bash,Read,Edit")
 CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "")
 
