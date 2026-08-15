@@ -14,6 +14,10 @@ substitutions:
   # nvm or a user-local bin dir — won't be visible; an absolute path sidesteps
   # that instead of requiring shell-config changes on the Mac.
   _CLAUDE_BIN: "claude"
+  # Tools Claude may run without an interactive approval prompt (there is
+  # none over non-interactive SSH). Adjust the mcp__*__* entries to match
+  # whichever MCP servers are configured on your own Mac.
+  _CLAUDE_ALLOWED_TOOLS: "Bash,Read,Edit,mcp__linear__*,mcp__github__*,mcp__github-actions__*"
 
 steps:
   - id: "build"
@@ -54,7 +58,11 @@ steps:
       - "--max-instances=3"
       - "--timeout=3600"
       - "--service-account=ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com"
-      - "--set-env-vars=MAC_SSH_HOST=${_MAC_SSH_HOST},MAC_SSH_USER=${_MAC_SSH_USER},MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE},CLAUDE_BIN=${_CLAUDE_BIN}"
+      # CLAUDE_ALLOWED_TOOLS' value contains commas (mcp__*__* entries are
+      # comma-separated), which collides with --set-env-vars' default
+      # delimiter, so the delimiter is switched to "@" (gcloud's
+      # "^delim^..." syntax) for this flag.
+      - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}"
       - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest"
     waitFor: ["push"]
 
