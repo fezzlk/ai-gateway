@@ -1,8 +1,18 @@
+import re
 import shlex
 import subprocess
 from typing import Optional
 
 import config
+
+# Deliberately excludes "/" so a repo name can never resolve to more than
+# one path segment below MAC_REPOS_ROOT -- there is no "../" to construct
+# without a slash in the input.
+_REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def is_valid_repo_name(repo: str) -> bool:
+    return bool(_REPO_NAME_RE.match(repo))
 
 
 def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
@@ -28,7 +38,11 @@ def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
     return " ".join(parts)
 
 
-def run_remote_claude(prompt: str, resume_session_id: Optional[str] = None):
+def run_remote_claude(
+    prompt: str,
+    resume_session_id: Optional[str] = None,
+    repo: Optional[str] = None,
+):
     """Runs `claude -p ...` on the Mac over an IAP-free Tailscale SSH hop,
     yielding stdout lines as they arrive.
 
@@ -49,6 +63,15 @@ def run_remote_claude(prompt: str, resume_session_id: Optional[str] = None):
         # non-interactive SSH, so start_github_mcp.sh picks up this
         # pre-set env var instead.
         remote_cmd = f"GITHUB_PERSONAL_ACCESS_TOKEN={shlex.quote(config.GITHUB_PERSONAL_ACCESS_TOKEN)} {remote_cmd}"
+
+    if repo:
+        # Not shlex.quote()'d: MAC_REPOS_ROOT defaults to "~/repos", and
+        # quoting would stop the shell from tilde-expanding it. This is
+        # still safe because `repo` is only reached here after
+        # is_valid_repo_name() has restricted it to a charset with no shell
+        # metacharacters (see _REPO_NAME_RE), and MAC_REPOS_ROOT is
+        # operator-set config rather than request input.
+        remote_cmd = f"cd {config.MAC_REPOS_ROOT}/{repo} && {remote_cmd}"
 
     ssh_cmd = [
         "ssh",

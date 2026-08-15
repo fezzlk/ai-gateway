@@ -3,6 +3,7 @@ if ("serviceWorker" in navigator) {
 }
 
 const TOKEN_KEY = "ai_gateway_token";
+const REPO_KEY = "ai_gateway_repo";
 
 function getToken() {
   let token = localStorage.getItem(TOKEN_KEY);
@@ -14,11 +15,14 @@ function getToken() {
 }
 
 const form = document.getElementById("run-form");
+const repoEl = document.getElementById("repo");
 const promptEl = document.getElementById("prompt");
 const submitBtn = document.getElementById("submit-btn");
 const output = document.getElementById("output");
 
 let lastSessionId = null;
+
+repoEl.value = localStorage.getItem(REPO_KEY) || "";
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -26,11 +30,14 @@ form.addEventListener("submit", async (event) => {
   const prompt = promptEl.value.trim();
   if (!prompt) return;
 
+  const repo = repoEl.value.trim();
+  localStorage.setItem(REPO_KEY, repo);
+
   submitBtn.disabled = true;
   output.textContent = "";
 
   try {
-    await runTask(prompt);
+    await runTask(prompt, repo);
   } catch (err) {
     output.textContent += `\n[error] ${err.message}`;
   } finally {
@@ -38,14 +45,14 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-async function runTask(prompt) {
+async function runTask(prompt, repo) {
   const response = await fetch("/api/run", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${getToken()}`,
     },
-    body: JSON.stringify({ prompt, resume_session_id: lastSessionId }),
+    body: JSON.stringify({ prompt, resume_session_id: lastSessionId, repo: repo || null }),
   });
 
   if (response.status === 401) {

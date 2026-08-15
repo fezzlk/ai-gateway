@@ -21,3 +21,8 @@ CLAUDE_ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "Bash,Read,Edit")
 CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "")
 
 SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("SSH_CONNECT_TIMEOUT_SECONDS", "15"))
+
+# Root directory on the Mac under which per-repo `cd` targets are resolved
+# (see ssh_runner.py). Matches the convention already used by the
+# pico-briefing sync-repos.sh skill.
+MAC_REPOS_ROOT = os.environ.get("MAC_REPOS_ROOT", "~/repos")
