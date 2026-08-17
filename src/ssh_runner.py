@@ -38,6 +38,35 @@ def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
     return " ".join(parts)
 
 
+def _build_ssh_cmd(remote_cmd: str) -> list:
+    return [
+        "ssh",
+        "-o", "ProxyCommand=tailscale nc %h %p",
+        "-o", "BatchMode=yes",
+        "-o", f"ConnectTimeout={config.SSH_CONNECT_TIMEOUT_SECONDS}",
+        "-i", config.MAC_SSH_KEY_PATH,
+        f"{config.MAC_SSH_USER}@{config.MAC_SSH_HOST}",
+        remote_cmd,
+    ]
+
+
+def run_remote_command(remote_cmd: str, timeout: Optional[int] = None):
+    """Runs an arbitrary command on the Mac over the same Tailscale SSH hop
+    as run_remote_claude(), blocking until it finishes. Returns
+    (returncode, combined_stdout_stderr) instead of streaming -- callers
+    that just need a short command's result (e.g. `board.py add ...`) don't
+    need SSE plumbing.
+    """
+    process = subprocess.run(
+        _build_ssh_cmd(remote_cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+    )
+    return process.returncode, process.stdout
+
+
 def run_remote_claude(
     prompt: str,
     resume_session_id: Optional[str] = None,
@@ -73,18 +102,8 @@ def run_remote_claude(
         # operator-set config rather than request input.
         remote_cmd = f"cd {config.MAC_REPOS_ROOT}/{repo} && {remote_cmd}"
 
-    ssh_cmd = [
-        "ssh",
-        "-o", "ProxyCommand=tailscale nc %h %p",
-        "-o", "BatchMode=yes",
-        "-o", f"ConnectTimeout={config.SSH_CONNECT_TIMEOUT_SECONDS}",
-        "-i", config.MAC_SSH_KEY_PATH,
-        f"{config.MAC_SSH_USER}@{config.MAC_SSH_HOST}",
-        remote_cmd,
-    ]
-
     process = subprocess.Popen(
-        ssh_cmd,
+        _build_ssh_cmd(remote_cmd),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

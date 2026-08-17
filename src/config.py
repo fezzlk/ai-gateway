@@ -26,3 +26,14 @@ SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("SSH_CONNECT_TIMEOUT_SECONDS", 
 # (see ssh_runner.py). Matches the convention already used by the
 # pico-briefing sync-repos.sh skill.
 MAC_REPOS_ROOT = os.environ.get("MAC_REPOS_ROOT", "~/repos")
+
+# LINE Messaging API channel used for human-agent-board's /line/webhook route
+# (see routes/line_webhook.py). LINE_CHANNEL_ACCESS_TOKEN here is only used
+# to send the reply confirmation -- the push notification itself is sent
+# directly from board.py on the Mac, not through this service.
+LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+# Fixed LINE userId allowed to trigger board.py writes via postback. Anything
+# from a different userId is silently ignored -- this is the trust boundary
+# that makes accepting an external webhook safe (see line_webhook.py).
+LINE_AUTHORIZED_USER_ID = os.environ.get("LINE_AUTHORIZED_USER_ID", "")
