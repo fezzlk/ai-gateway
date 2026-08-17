@@ -99,9 +99,15 @@ def line_webhook():
 
     payload = json.loads(body or b"{}")
     for event in payload.get("events", []):
+        source_user_id = event.get("source", {}).get("userId")
+        # Logged for every verified event (not just postback) so the
+        # channel owner can find their own userId in Cloud Run logs during
+        # setup -- see human-agent-board's LINE_NOTIFY_USER_ID /
+        # LINE_AUTHORIZED_USER_ID setup steps.
+        logger.info("verified LINE event type=%s userId=%s", event.get("type"), source_user_id)
+
         if event.get("type") != "postback":
             continue
-        source_user_id = event.get("source", {}).get("userId")
         if not config.LINE_AUTHORIZED_USER_ID or source_user_id != config.LINE_AUTHORIZED_USER_ID:
             logger.warning("ignoring postback from unauthorized userId: %s", source_user_id)
             continue
