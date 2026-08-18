@@ -64,7 +64,7 @@ def _handle_postback(event: dict) -> None:
         return
 
     remote_cmd = (
-        "python ~/repos/human-agent-board/board.py add "
+        "python3 ~/repos/human-agent-board/board.py add "
         "--direction user-to-agent --from user --type "
         f"{shlex.quote(item_type)} "
         f"--title {shlex.quote(f'{_LABEL_BY_ACTION[action]} (LINE経由)')} "
