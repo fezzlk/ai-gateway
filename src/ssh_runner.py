@@ -1,3 +1,4 @@
+import json
 import re
 import shlex
 import subprocess
@@ -67,6 +68,57 @@ def run_remote_command(remote_cmd: str, timeout: Optional[int] = None):
     return process.returncode, process.stdout
 
 
+def _with_agent_credentials(remote_cmd: str) -> str:
+    """Inject credentials required by non-interactive agent processes.
+
+    Values are shell-quoted and are never included in returned diagnostics.
+    """
+    assignments = []
+    if config.GITHUB_PERSONAL_ACCESS_TOKEN:
+        token = shlex.quote(config.GITHUB_PERSONAL_ACCESS_TOKEN)
+        assignments.extend([f"GITHUB_PERSONAL_ACCESS_TOKEN={token}", f"GH_TOKEN={token}"])
+    if config.LINEAR_API_KEY:
+        assignments.append(f"LINEAR_API_KEY={shlex.quote(config.LINEAR_API_KEY)}")
+    if config.LINEAR_WRITE_ALLOWED:
+        assignments.append(
+            f"LINEAR_WRITE_ALLOWED={shlex.quote(config.LINEAR_WRITE_ALLOWED)}"
+        )
+    if config.CLAUDE_CODE_OAUTH_TOKEN:
+        assignments.append(
+            f"CLAUDE_CODE_OAUTH_TOKEN={shlex.quote(config.CLAUDE_CODE_OAUTH_TOKEN)}"
+        )
+    return " ".join(assignments + [remote_cmd])
+
+
+def run_remote_preflight(repo: Optional[str] = None):
+    repo_path = config.MAC_REPOS_ROOT if not repo else f"{config.MAC_REPOS_ROOT}/{repo}"
+    command = (
+        f"python3 {config.CONNECTIVITY_PREFLIGHT_PATH} --json "
+        f"--repo {repo_path} --timeout 10"
+    )
+    returncode, output = run_remote_command(
+        _with_agent_credentials(command),
+        timeout=config.CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS,
+    )
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        payload = {
+            "schema_version": 1,
+            "overall": "BLOCKED",
+            "checks": {
+                "preflight": {
+                    "status": "BLOCKED",
+                    "summary": "remote preflight did not return valid JSON",
+                    "recovery": "verify agent-kit installation and remote connectivity",
+                }
+            },
+        }
+    if returncode not in (0, 2):
+        payload["overall"] = "BLOCKED"
+    return payload
+
+
 def run_remote_claude(
     prompt: str,
     resume_session_id: Optional[str] = None,
@@ -79,19 +131,18 @@ def run_remote_claude(
     it tunnels the single TCP connection through the container's userspace
     tailscaled with no extra client-side proxy plumbing needed.
     """
-    remote_cmd = build_claude_cmdline(prompt, resume_session_id)
-    if config.CLAUDE_CODE_OAUTH_TOKEN:
-        # SSH does not forward local env vars to the remote command by
-        # default, so the token is injected as a leading env-var assignment
-        # on the remote command line instead of via `ssh -o SendEnv=`.
-        remote_cmd = f"CLAUDE_CODE_OAUTH_TOKEN={shlex.quote(config.CLAUDE_CODE_OAUTH_TOKEN)} {remote_cmd}"
+    preflight = run_remote_preflight(repo)
+    yield json.dumps({"type": "connectivity_preflight", **preflight})
+    if preflight.get("overall") == "BLOCKED":
+        yield json.dumps(
+            {
+                "type": "gateway_error",
+                "message": "task was not started because connectivity preflight is BLOCKED",
+            }
+        )
+        return
 
-    if config.GITHUB_PERSONAL_ACCESS_TOKEN:
-        # Same rationale as CLAUDE_CODE_OAUTH_TOKEN above: the GitHub MCP
-        # server's `gh auth token` can't reach the macOS keychain over
-        # non-interactive SSH, so start_github_mcp.sh picks up this
-        # pre-set env var instead.
-        remote_cmd = f"GITHUB_PERSONAL_ACCESS_TOKEN={shlex.quote(config.GITHUB_PERSONAL_ACCESS_TOKEN)} {remote_cmd}"
+    remote_cmd = _with_agent_credentials(build_claude_cmdline(prompt, resume_session_id))
 
     if repo:
         # Not shlex.quote()'d: MAC_REPOS_ROOT defaults to "~/repos", and

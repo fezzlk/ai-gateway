@@ -19,9 +19,19 @@ logger = logging.getLogger(__name__)
 line_webhook_blueprint = Blueprint("line_webhook_blueprint", __name__)
 
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql"
+_LINEAR_PRIORITY_MUTATION = """
+mutation SetPriority($id: String!, $priority: Int!) {
+  issueUpdate(id: $id, input: { priority: $priority }) {
+    success
+    issue { identifier title }
+  }
+}
+"""
 
 _TYPE_BY_ACTION = {"approve": "approval", "reject": "rejection"}
 _LABEL_BY_ACTION = {"approve": "承認", "reject": "却下"}
+_PRIORITY_LABELS = {1: "Urgent", 2: "High", 3: "Medium", 4: "Low"}
 _DASHBOARD_COMMANDS = {"board", "ボード"}
 _DECISION_COMMANDS = {"判断待ち", "decisions"}
 _REQUEST_COMMANDS = {"依頼", "requests"}
@@ -297,11 +307,72 @@ def _usage_flex(data, web_url):
     )
 
 
+def _set_linear_priority(issue_id: str, priority_value: int) -> dict:
+    payload = json.dumps({
+        "query": _LINEAR_PRIORITY_MUTATION,
+        "variables": {"id": issue_id, "priority": priority_value},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        LINEAR_GRAPHQL_URL,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": config.LINEAR_API_KEY,
+        },
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    if body.get("errors"):
+        raise RuntimeError(str(body["errors"])[:500])
+    result = body["data"]["issueUpdate"]
+    if not result.get("success"):
+        raise RuntimeError("Linear issueUpdate returned success=false")
+    return result["issue"]
+
+
+def _handle_priority_postback(data: str, reply_token: str) -> None:
+    parts = data.split("|", 2)
+    if len(parts) != 3:
+        logger.warning("ignoring malformed priority postback: %r", data)
+        return
+    _, issue_id, raw_value = parts
+    try:
+        priority_value = int(raw_value)
+    except ValueError:
+        logger.warning("ignoring non-integer priority value: %r", data)
+        return
+    label = _PRIORITY_LABELS.get(priority_value)
+    if not label:
+        logger.warning("ignoring out-of-range priority value: %r", data)
+        return
+
+    if not config.LINEAR_WRITE_ALLOWED:
+        _reply(reply_token, "Linear書き込みが許可されていません（LINEAR_WRITE_ALLOWED未設定）。")
+        return
+    if not config.LINEAR_API_KEY:
+        _reply(reply_token, "エラー: LINEAR_API_KEYが設定されていません。")
+        return
+
+    try:
+        issue = _set_linear_priority(issue_id, priority_value)
+    except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
+        logger.exception("failed to set Linear priority")
+        _reply(reply_token, f"エラー: 優先度の設定に失敗しました ({e})"[:2000])
+        return
+
+    identifier = issue.get("identifier", issue_id)
+    _reply(reply_token, f"{identifier} の優先度を {label} に設定しました。")
+
+
 def _handle_postback(event: dict) -> None:
     reply_token = event.get("replyToken", "")
     data = event.get("postback", {}).get("data", "")
     if data.startswith("board|"):
         _handle_board_postback(event, data)
+        return
+    if data.startswith("setpriority|"):
+        _handle_priority_postback(data, reply_token)
         return
 
     action, _, related_link = data.partition("|")
