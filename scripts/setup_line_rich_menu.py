@@ -52,7 +52,7 @@ def menu_definition():
 
 
 def find_or_create_menu(token):
-    existing = request(token, "GET", f"{API_BASE}/richmenu").get("richmenus", [])
+    existing = request(token, "GET", f"{API_BASE}/richmenu/list").get("richmenus", [])
     match = next((menu for menu in existing if menu.get("name") == MENU_NAME), None)
     if match:
         return match["richMenuId"], False
