@@ -2,9 +2,7 @@ const TOKEN_KEY = "ai_gateway_token";
 let selectedHours = 168;
 
 function token() {
-  let value = localStorage.getItem(TOKEN_KEY);
-  if (!value) { value = prompt("ai-gateway access token") || ""; if (value) localStorage.setItem(TOKEN_KEY, value); }
-  return value;
+  return localStorage.getItem(TOKEN_KEY) || "";
 }
 
 function line(points, provider, start, span) {
@@ -33,10 +31,13 @@ function render(data) {
 }
 
 async function load() {
+  if (!token()) { document.querySelector("#auth").classList.add("visible"); document.querySelector("#updated").textContent = "認証してください"; return; }
+  document.querySelector("#auth").classList.remove("visible");
   const response = await fetch(`/api/usage?hours=${selectedHours}`, {headers:{Authorization:`Bearer ${token()}`}});
-  if (response.status === 401) { localStorage.removeItem(TOKEN_KEY); return load(); }
+  if (response.status === 401) { localStorage.removeItem(TOKEN_KEY); document.querySelector("#auth").classList.add("visible"); document.querySelector("#updated").textContent = "トークンが違います"; return; }
   if (!response.ok) throw new Error(`取得失敗 (${response.status})`);
   render(await response.json());
 }
-document.querySelectorAll("button").forEach(button => button.onclick = () => { document.querySelector("button.active").classList.remove("active"); button.classList.add("active"); selectedHours=Number(button.dataset.hours); load(); });
+document.querySelectorAll("nav button").forEach(button => button.onclick = () => { document.querySelector("nav button.active").classList.remove("active"); button.classList.add("active"); selectedHours=Number(button.dataset.hours); load(); });
+document.querySelector("#auth").onsubmit = event => { event.preventDefault(); const value=document.querySelector("#token").value.trim(); if (value) localStorage.setItem(TOKEN_KEY,value); load(); };
 load().catch(error => document.querySelector("#updated").textContent = error.message);
