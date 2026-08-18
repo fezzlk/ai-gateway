@@ -20,6 +20,8 @@ LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 
 _TYPE_BY_ACTION = {"approve": "approval", "reject": "rejection"}
 _LABEL_BY_ACTION = {"approve": "承認", "reject": "却下"}
+_STATUS_COMMANDS = {"kobito状況", "kobito 状況", "kobito status"}
+_LINE_REPLY_TEXT_MAX = 5000
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:
@@ -87,6 +89,32 @@ def _handle_postback(event: dict) -> None:
     _reply(reply_token, f"{_LABEL_BY_ACTION[action]}を記録しました。")
 
 
+def _handle_text(event: dict) -> None:
+    reply_token = event.get("replyToken", "")
+    text = event.get("message", {}).get("text", "").strip()
+    if text.lower() not in _STATUS_COMMANDS:
+        return
+
+    remote_cmd = (
+        "python3 ~/repos/human-agent-board/board.py "
+        "status list --source kobito --recent 5"
+    )
+    try:
+        returncode, output = run_remote_command(remote_cmd, timeout=60)
+    except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
+        logger.exception("run_remote_command failed")
+        _reply(reply_token, f"エラー: Macへの接続に失敗しました ({e})")
+        return
+
+    if returncode != 0:
+        logger.warning("board.py status list failed (rc=%s): %s", returncode, output)
+        _reply(reply_token, f"エラー: 状況を取得できませんでした\n{output}".strip()[:2000])
+        return
+
+    response = output.strip() or "kobitoの作業状況はありません。"
+    _reply(reply_token, response[:_LINE_REPLY_TEXT_MAX])
+
+
 @line_webhook_blueprint.route("/line/webhook", methods=["POST"])
 def line_webhook():
     body = request.get_data()
@@ -106,11 +134,18 @@ def line_webhook():
         # LINE_AUTHORIZED_USER_ID setup steps.
         logger.info("verified LINE event type=%s userId=%s", event.get("type"), source_user_id)
 
-        if event.get("type") != "postback":
+        event_type = event.get("type")
+        is_supported_text = (
+            event_type == "message" and event.get("message", {}).get("type") == "text"
+        )
+        if event_type != "postback" and not is_supported_text:
             continue
         if not config.LINE_AUTHORIZED_USER_ID or source_user_id != config.LINE_AUTHORIZED_USER_ID:
-            logger.warning("ignoring postback from unauthorized userId: %s", source_user_id)
+            logger.warning("ignoring %s from unauthorized userId: %s", event_type, source_user_id)
             continue
-        _handle_postback(event)
+        if event_type == "postback":
+            _handle_postback(event)
+        else:
+            _handle_text(event)
 
     return "", 200

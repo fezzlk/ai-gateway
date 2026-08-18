@@ -12,6 +12,12 @@ fallback).
    reachable)
 3. GCP VM fallback (used only when the Mac isn't reachable)
 
+## LINEでkobitoの状況を確認する
+
+human-agent-boardとkobitoを設定済みの環境では、認可済みユーザーがLINE Botへ`kobito状況`（`kobito 状況`、`kobito status`も可）と送ると、Mac上のhuman-agent-boardから進行中の作業と直近5件の完了・失敗を取得して返信する。
+
+問い合わせはLINE署名検証と`LINE_AUTHORIZED_USER_ID`照合を通過したユーザーだけが実行できる。タスク・優先度・正式な完了状態の正本はLinearであり、返信内容はkobitoが更新するリアルタイム状態のスナップショットとして扱う。
+
 ## GCP VM fallback: ephemeral by design
 
 The fallback environment is **not** a persistent, always-on VM. Keeping an
