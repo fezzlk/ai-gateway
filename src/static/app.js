@@ -99,6 +99,11 @@ function handleFrame(frame) {
   } else if (event.type === "result") {
     if (event.session_id) lastSessionId = event.session_id;
     if (event.result) output.textContent += `\n\n${event.result}`;
+  } else if (event.type === "connectivity_preflight") {
+    const checks = Object.entries(event.checks || {})
+      .map(([name, check]) => `${name}=${check.status}`)
+      .join(", ");
+    output.textContent += `\n[connectivity ${event.overall}] ${checks}`;
   } else if (event.type === "gateway_error" || event.type === "log") {
     output.textContent += `\n[${event.type}] ${event.message || event.line || ""}`;
   }

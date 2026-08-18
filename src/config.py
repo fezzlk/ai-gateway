@@ -17,6 +17,8 @@ CLAUDE_CODE_OAUTH_TOKEN = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
 # `gh auth token` (used by the GitHub MCP server) reads from the macOS
 # keychain, which non-interactive SSH sessions can't reach.
 GITHUB_PERSONAL_ACCESS_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
+LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
+LINEAR_WRITE_ALLOWED = os.environ.get("LINEAR_WRITE_ALLOWED", "")
 CLAUDE_ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "Bash,Read,Edit")
 CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "")
 
@@ -26,6 +28,13 @@ SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("SSH_CONNECT_TIMEOUT_SECONDS", 
 # (see ssh_runner.py). Matches the convention already used by the
 # pico-briefing sync-repos.sh skill.
 MAC_REPOS_ROOT = os.environ.get("MAC_REPOS_ROOT", "~/repos")
+CONNECTIVITY_PREFLIGHT_PATH = os.environ.get(
+    "CONNECTIVITY_PREFLIGHT_PATH",
+    "~/repos/agent-kit/scripts/connectivity-preflight.py",
+)
+CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS = int(
+    os.environ.get("CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS", "30")
+)
 
 # LINE Messaging API channel used for human-agent-board's /line/webhook route
 # (see routes/line_webhook.py). LINE_CHANNEL_ACCESS_TOKEN here is only used
