@@ -12,9 +12,21 @@ fallback).
    reachable)
 3. GCP VM fallback (used only when the Mac isn't reachable)
 
-## LINEでkobitoの状況を確認する
+## LINEでBoardを確認・管理する
 
-human-agent-boardとkobitoを設定済みの環境では、認可済みユーザーがLINE Botへ`kobito状況`（`kobito 状況`、`kobito status`も可）と送ると、Mac上のhuman-agent-boardから進行中の作業と直近5件の完了・失敗を取得して返信する。
+human-agent-boardとkobitoを設定済みの環境では、認可済みユーザーがLINE BotからBoard全体をFlex Messageで確認・管理できる。
+
+- `board` / `ボード`: 判断待ち、依頼・通知、kobito進行状況の件数と概要
+- `判断待ち` / `decisions`: 判断材料リンクを開き、その場で承認・却下
+- `依頼` / `requests`: 依頼・通知を確認し、処理済みに変更
+- `kobito状況` / `kobito status`: 進行中と直近の完了・失敗、次の作業、関連リンク
+
+リッチメニューを設定すると、上記のうち`board`、`判断待ち`、`kobito状況`を常時ボタンから開ける。画像生成と設定は次の通り。
+
+```bash
+rsvg-convert -w 2500 -h 843 assets/line-rich-menu.svg -o assets/line-rich-menu.png
+LINE_CHANNEL_ACCESS_TOKEN=... python3 scripts/setup_line_rich_menu.py assets/line-rich-menu.png
+```
 
 問い合わせはLINE署名検証と`LINE_AUTHORIZED_USER_ID`照合を通過したユーザーだけが実行できる。タスク・優先度・正式な完了状態の正本はLinearであり、返信内容はkobitoが更新するリアルタイム状態のスナップショットとして扱う。
 

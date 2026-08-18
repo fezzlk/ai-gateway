@@ -2,8 +2,10 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import shlex
 import urllib.error
+import urllib.parse
 import urllib.request
 from base64 import b64encode
 
@@ -20,8 +22,11 @@ LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
 
 _TYPE_BY_ACTION = {"approve": "approval", "reject": "rejection"}
 _LABEL_BY_ACTION = {"approve": "承認", "reject": "却下"}
+_DASHBOARD_COMMANDS = {"board", "ボード"}
+_DECISION_COMMANDS = {"判断待ち", "decisions"}
+_REQUEST_COMMANDS = {"依頼", "requests"}
 _STATUS_COMMANDS = {"kobito状況", "kobito 状況", "kobito status"}
-_LINE_REPLY_TEXT_MAX = 5000
+_BOARD_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+\.yaml$")
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:
@@ -34,11 +39,11 @@ def _verify_signature(body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def _reply(reply_token: str, text: str) -> None:
+def _reply_messages(reply_token: str, messages: list) -> None:
     if not config.LINE_CHANNEL_ACCESS_TOKEN:
         return
     payload = json.dumps(
-        {"replyToken": reply_token, "messages": [{"type": "text", "text": text}]}
+        {"replyToken": reply_token, "messages": messages}
     ).encode("utf-8")
     req = urllib.request.Request(
         LINE_REPLY_URL,
@@ -55,9 +60,194 @@ def _reply(reply_token: str, text: str) -> None:
         logger.warning("failed to send LINE reply: %s", e)
 
 
+def _reply(reply_token: str, text: str) -> None:
+    _reply_messages(reply_token, [{"type": "text", "text": text}])
+
+
+def _run_board_command(arguments: str, timeout: int = 60):
+    return run_remote_command(
+        f"python3 ~/repos/human-agent-board/board.py {arguments}",
+        timeout=timeout,
+    )
+
+
+def _get_dashboard():
+    returncode, output = _run_board_command("dashboard --json --recent 5")
+    if returncode != 0:
+        raise RuntimeError(output.strip() or "board dashboard failed")
+    return json.loads(output)
+
+
+def _postback_button(label, data, style="secondary"):
+    return {
+        "type": "button",
+        "style": style,
+        "height": "sm",
+        "action": {"type": "postback", "label": label, "data": data, "displayText": label},
+    }
+
+
+def _uri_button(label, uri):
+    return {
+        "type": "button",
+        "style": "link",
+        "height": "sm",
+        "action": {"type": "uri", "label": label, "uri": uri},
+    }
+
+
+def _text(text, size="sm", weight=None, color=None, wrap=True):
+    item = {"type": "text", "text": str(text), "size": size, "wrap": wrap}
+    if weight:
+        item["weight"] = weight
+    if color:
+        item["color"] = color
+    return item
+
+
+def _flex_message(alt_text, contents):
+    return {"type": "flex", "altText": alt_text, "contents": contents}
+
+
+def _dashboard_flex(data):
+    current = data.get("status_current", [])
+    status_preview = "\n".join(
+        f"• {item.get('work_id', '?')} [{item.get('state', '?')}] {item.get('title', '')}"
+        for item in current[:3]
+    ) or "進行中の作業なし"
+    body = {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "md",
+        "contents": [
+            _text("Human Agent Board", size="xl", weight="bold"),
+            _text(f"判断待ち  {len(data.get('decisions', []))}件", weight="bold", color="#D97706"),
+            _text(f"通知  {len(data.get('notifications', []))}件"),
+            _text(f"ユーザー依頼  {len(data.get('user_requests', []))}件"),
+            _text(f"kobito進行中  {len(current)}件", weight="bold", color="#2563EB"),
+            {"type": "separator"},
+            _text(status_preview, size="xs", color="#4B5563"),
+            _text(f"更新: {data.get('generated_at', 'unknown')}", size="xxs", color="#9CA3AF"),
+        ],
+    }
+    footer = {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "contents": [
+            _postback_button("判断待ち", "board|decisions", "primary"),
+            _postback_button("依頼・通知", "board|requests"),
+            _postback_button("kobito状況", "board|kobito"),
+            _postback_button("更新", "board|home"),
+        ],
+    }
+    return _flex_message(
+        "Board: 判断待ち・依頼・kobito状況",
+        {"type": "bubble", "body": body, "footer": footer},
+    )
+
+
+def _link_buttons(item, limit=2):
+    buttons = []
+    for index, uri in enumerate((item.get("related_links") or [])[:limit], start=1):
+        host = urllib.parse.urlparse(uri).hostname or ""
+        if "github.com" in host:
+            label = "GitHub"
+        elif "linear.app" in host:
+            label = "Linear"
+        else:
+            label = f"資料 {index}"
+        buttons.append(_uri_button(label, uri))
+    return buttons
+
+
+def _item_bubble(item, decision=False):
+    body = {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "md",
+        "contents": [
+            _text(item.get("title") or "(no title)", size="lg", weight="bold"),
+            _text(item.get("body") or "(no details)", size="sm", color="#4B5563"),
+            _text(
+                f"{item.get('from', '?')} · {item.get('type', '?')} · {item.get('created_at', '?')}",
+                size="xxs",
+                color="#9CA3AF",
+            ),
+        ],
+    }
+    footer_contents = _link_buttons(item)
+    filename = item.get("filename", "")
+    if decision:
+        footer_contents.extend([
+            _postback_button("承認", f"board|approve|{filename}", "primary"),
+            _postback_button("却下", f"board|reject|{filename}"),
+        ])
+    else:
+        footer_contents.append(_postback_button("処理済みにする", f"board|complete|{filename}"))
+    return {
+        "type": "bubble",
+        "body": body,
+        "footer": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": footer_contents},
+    }
+
+
+def _status_bubble(item):
+    contents = [
+        _text(f"{item.get('work_id', '?')} [{item.get('state', '?')}]", size="lg", weight="bold"),
+        _text(item.get("title") or "(no title)", weight="bold"),
+        _text(item.get("summary") or "(no summary)", color="#4B5563"),
+    ]
+    if item.get("next_action"):
+        contents.append(_text(f"次: {item['next_action']}", color="#2563EB"))
+    contents.append(_text(f"更新: {item.get('updated_at', '?')}", size="xxs", color="#9CA3AF"))
+    return {
+        "type": "bubble",
+        "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": _link_buttons(item) or [_postback_button("Boardへ戻る", "board|home")],
+        },
+    }
+
+
+def _carousel_or_empty(title, items, bubble_builder):
+    if not items:
+        return _flex_message(
+            title,
+            {
+                "type": "bubble",
+                "body": {"type": "box", "layout": "vertical", "contents": [_text(f"{title}はありません。", weight="bold")]},
+                "footer": {"type": "box", "layout": "vertical", "contents": [_postback_button("Boardへ戻る", "board|home")]},
+            },
+        )
+    return _flex_message(
+        title,
+        {"type": "carousel", "contents": [bubble_builder(item) for item in items[:10]]},
+    )
+
+
+def _dashboard_section_message(section, data):
+    if section == "decisions":
+        return _carousel_or_empty("判断待ち", data.get("decisions", []), lambda item: _item_bubble(item, True))
+    if section == "requests":
+        items = data.get("notifications", []) + data.get("user_requests", [])
+        return _carousel_or_empty("依頼・通知", items, _item_bubble)
+    if section == "kobito":
+        items = data.get("status_current", []) + data.get("status_history", [])
+        return _carousel_or_empty("kobito状況", items, _status_bubble)
+    return _dashboard_flex(data)
+
+
 def _handle_postback(event: dict) -> None:
     reply_token = event.get("replyToken", "")
     data = event.get("postback", {}).get("data", "")
+    if data.startswith("board|"):
+        _handle_board_postback(event, data)
+        return
+
     action, _, related_link = data.partition("|")
 
     item_type = _TYPE_BY_ACTION.get(action)
@@ -89,30 +279,76 @@ def _handle_postback(event: dict) -> None:
     _reply(reply_token, f"{_LABEL_BY_ACTION[action]}を記録しました。")
 
 
+def _handle_board_postback(event: dict, data: str) -> None:
+    reply_token = event.get("replyToken", "")
+    parts = data.split("|", 2)
+    action = parts[1] if len(parts) > 1 else ""
+
+    try:
+        if action in {"home", "decisions", "requests", "kobito"}:
+            dashboard = _get_dashboard()
+            _reply_messages(reply_token, [_dashboard_section_message(action, dashboard)])
+            return
+
+        if action not in {"approve", "reject", "complete"} or len(parts) != 3:
+            logger.warning("ignoring malformed board postback: %r", data)
+            return
+        filename = parts[2]
+        if not _BOARD_FILENAME_RE.fullmatch(filename):
+            logger.warning("ignoring invalid board filename: %r", filename)
+            return
+
+        quoted_filename = shlex.quote(filename)
+        if action in {"approve", "reject"}:
+            decision = "approval" if action == "approve" else "rejection"
+            returncode, output = _run_board_command(
+                f"respond {quoted_filename} --decision {decision}"
+            )
+            label = "承認" if action == "approve" else "却下"
+        else:
+            returncode, output = _run_board_command(f"complete {quoted_filename}")
+            label = "処理済み"
+
+        if returncode != 0:
+            raise RuntimeError(output.strip() or "board action failed")
+        dashboard = _get_dashboard()
+        _reply_messages(
+            reply_token,
+            [
+                {"type": "text", "text": f"{label}にしました。"},
+                _dashboard_flex(dashboard),
+            ],
+        )
+    except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
+        logger.exception("board postback failed")
+        _reply(reply_token, f"エラー: Board操作に失敗しました ({e})"[:2000])
+
+
 def _handle_text(event: dict) -> None:
     reply_token = event.get("replyToken", "")
     text = event.get("message", {}).get("text", "").strip()
-    if text.lower() not in _STATUS_COMMANDS:
+    normalized = text.lower()
+    if normalized not in (
+        _DASHBOARD_COMMANDS | _DECISION_COMMANDS | _REQUEST_COMMANDS | _STATUS_COMMANDS
+    ):
         return
 
-    remote_cmd = (
-        "python3 ~/repos/human-agent-board/board.py "
-        "status list --source kobito --recent 5"
-    )
     try:
-        returncode, output = run_remote_command(remote_cmd, timeout=60)
+        dashboard = _get_dashboard()
     except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
-        logger.exception("run_remote_command failed")
-        _reply(reply_token, f"エラー: Macへの接続に失敗しました ({e})")
+        logger.exception("board dashboard failed")
+        _reply(reply_token, f"エラー: Boardを取得できませんでした ({e})")
         return
 
-    if returncode != 0:
-        logger.warning("board.py status list failed (rc=%s): %s", returncode, output)
-        _reply(reply_token, f"エラー: 状況を取得できませんでした\n{output}".strip()[:2000])
-        return
-
-    response = output.strip() or "kobitoの作業状況はありません。"
-    _reply(reply_token, response[:_LINE_REPLY_TEXT_MAX])
+    if normalized in _DECISION_COMMANDS:
+        section = "decisions"
+    elif normalized in _REQUEST_COMMANDS:
+        section = "requests"
+    elif normalized in _STATUS_COMMANDS:
+        section = "kobito"
+    else:
+        section = "home"
+    _reply_messages(reply_token, [_dashboard_section_message(section, dashboard)])
 
 
 @line_webhook_blueprint.route("/line/webhook", methods=["POST"])

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="843" viewBox="0 0 2500 843">
+  <rect width="2500" height="843" fill="#F8FAFC"/>
+  <rect x="0" width="833" height="843" fill="#0F766E"/>
+  <rect x="833" width="834" height="843" fill="#FFF7ED"/>
+  <rect x="1667" width="833" height="843" fill="#EFF6FF"/>
+  <path d="M250 224h333a42 42 0 0 1 42 42v272a42 42 0 0 1-42 42H250a42 42 0 0 1-42-42V266a42 42 0 0 1 42-42Z" fill="none" stroke="#FFF" stroke-width="28"/>
+  <path d="M292 328h250M292 402h250M292 476h166" stroke="#FFF" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="1054" cy="402" r="112" fill="none" stroke="#C2410C" stroke-width="28"/>
+  <path d="m1135 483 104 104" stroke="#C2410C" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="2083" cy="323" r="68" fill="none" stroke="#1D4ED8" stroke-width="28"/>
+  <path d="M1931 555c20-102 78-153 152-153s132 51 152 153" fill="none" stroke="#1D4ED8" stroke-width="28" stroke-linecap="round"/>
+  <text x="416" y="714" fill="#FFF" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="84" font-weight="700" text-anchor="middle">Board</text>
+  <text x="1250" y="714" fill="#9A3412" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="84" font-weight="700" text-anchor="middle">判断待ち</text>
+  <text x="2083" y="714" fill="#1E40AF" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="84" font-weight="700" text-anchor="middle">kobito状況</text>
+  <path d="M833 0v843M1667 0v843" stroke="#CBD5E1" stroke-width="4"/>
+</svg>
