@@ -26,6 +26,7 @@ _DASHBOARD_COMMANDS = {"board", "ボード"}
 _DECISION_COMMANDS = {"判断待ち", "decisions"}
 _REQUEST_COMMANDS = {"依頼", "requests"}
 _STATUS_COMMANDS = {"kobito状況", "kobito 状況", "kobito status"}
+_USAGE_COMMANDS = {"利用量", "usage", "残量"}
 _BOARD_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+\.yaml$")
 
 
@@ -75,6 +76,13 @@ def _get_dashboard():
     returncode, output = _run_board_command("dashboard --json --recent 5")
     if returncode != 0:
         raise RuntimeError(output.strip() or "board dashboard failed")
+    return json.loads(output)
+
+
+def _get_usage_dashboard(hours=168):
+    returncode, output = _run_board_command(f"usage dashboard --hours {int(hours)}")
+    if returncode != 0:
+        raise RuntimeError(output.strip() or "usage dashboard failed")
     return json.loads(output)
 
 
@@ -138,6 +146,7 @@ def _dashboard_flex(data):
             _postback_button("判断待ち", "board|decisions", "primary"),
             _postback_button("依頼・通知", "board|requests"),
             _postback_button("kobito状況", "board|kobito"),
+            _postback_button("AI利用量", "board|usage"),
             _postback_button("更新", "board|home"),
         ],
     }
@@ -241,6 +250,37 @@ def _dashboard_section_message(section, data):
     return _dashboard_flex(data)
 
 
+def _usage_flex(data, web_url):
+    contents = [_text("AI利用量", size="xl", weight="bold")]
+    for provider in ("claude", "codex"):
+        item = data.get("latest", {}).get(provider)
+        if not item:
+            contents.append(_text(f"{provider.title()}: 取得待ち", color="#9CA3AF"))
+            continue
+        primary = max(0, 100 - float(item.get("primary_used", 0)))
+        secondary = item.get("secondary_used")
+        label = f"{provider.title()}: 5h {primary:.0f}%残"
+        if secondary is not None:
+            label += f" / 7d {max(0, 100 - float(secondary)):.0f}%残"
+        contents.append(_text(label, weight="bold"))
+        contents.append(_text(f"取得: {item.get('recorded_at', '?')}", size="xxs", color="#9CA3AF"))
+    contents.extend([
+        {"type": "separator"},
+        _text(data.get("savings", {}).get("message", "効果測定データを蓄積中です。"), size="xs", color="#4B5563"),
+    ])
+    return _flex_message(
+        "Claude・Codex利用量",
+        {
+            "type": "bubble",
+            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
+            "footer": {
+                "type": "box", "layout": "vertical", "spacing": "sm",
+                "contents": [_uri_button("詳細グラフ", web_url), _postback_button("更新", "board|usage")],
+            },
+        },
+    )
+
+
 def _handle_postback(event: dict) -> None:
     reply_token = event.get("replyToken", "")
     data = event.get("postback", {}).get("data", "")
@@ -285,6 +325,11 @@ def _handle_board_postback(event: dict, data: str) -> None:
     action = parts[1] if len(parts) > 1 else ""
 
     try:
+        if action == "usage":
+            usage = _get_usage_dashboard()
+            web_url = request.host_url.rstrip("/") + "/usage.html"
+            _reply_messages(reply_token, [_usage_flex(usage, web_url)])
+            return
         if action in {"home", "decisions", "requests", "kobito"}:
             dashboard = _get_dashboard()
             _reply_messages(reply_token, [_dashboard_section_message(action, dashboard)])
@@ -329,11 +374,16 @@ def _handle_text(event: dict) -> None:
     text = event.get("message", {}).get("text", "").strip()
     normalized = text.lower()
     if normalized not in (
-        _DASHBOARD_COMMANDS | _DECISION_COMMANDS | _REQUEST_COMMANDS | _STATUS_COMMANDS
+        _DASHBOARD_COMMANDS | _DECISION_COMMANDS | _REQUEST_COMMANDS | _STATUS_COMMANDS | _USAGE_COMMANDS
     ):
         return
 
     try:
+        if normalized in _USAGE_COMMANDS:
+            usage = _get_usage_dashboard()
+            web_url = request.host_url.rstrip("/") + "/usage.html"
+            _reply_messages(reply_token, [_usage_flex(usage, web_url)])
+            return
         dashboard = _get_dashboard()
     except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
         logger.exception("board dashboard failed")

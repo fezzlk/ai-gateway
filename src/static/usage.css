@@ -1,0 +1,13 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { margin: 0; background: #07111f; color: #e5eef9; }
+main { max-width: 900px; margin: auto; padding: 24px 16px 64px; }
+header p { color: #7dd3fc; margin: 0 0 6px; } h1 { margin: 0; font-size: 2rem; } #updated { color: #8fa2b8; }
+nav { display: flex; gap: 8px; margin: 24px 0; } button { border: 1px solid #29435e; background: #10243a; color: #dbeafe; border-radius: 999px; padding: 9px 16px; }
+button.active { background: #0d9488; border-color: #2dd4bf; color: white; }
+#cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.card,.panel { background: #0d1b2b; border: 1px solid #1d354e; border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+.card strong { display: block; font-size: 2rem; margin: 8px 0; } .muted { color: #8fa2b8; font-size: .85rem; }
+.panel { margin-top: 14px; } h2 { font-size: 1rem; margin: 0 0 14px; }
+#chart { width: 100%; height: auto; background: #091522; border-radius: 10px; }
+.grid { stroke: #1e3851; stroke-width: 1; }.claude { stroke: #fb923c; }.codex { stroke: #2dd4bf; }.series { fill: none; stroke-width: 4; }
+.task { display: flex; justify-content: space-between; border-top: 1px solid #1d354e; padding: 10px 0; }

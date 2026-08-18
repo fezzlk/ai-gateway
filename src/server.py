@@ -20,11 +20,13 @@ from auth import api_auth  # noqa: E402
 from routes.health import health_blueprint  # noqa: E402
 from routes.line_webhook import line_webhook_blueprint  # noqa: E402
 from routes.run_task import run_task_blueprint  # noqa: E402
+from routes.usage import usage_blueprint  # noqa: E402
 
 app.register_blueprint(api_auth)
 app.register_blueprint(health_blueprint)
 app.register_blueprint(run_task_blueprint)
 app.register_blueprint(line_webhook_blueprint)
+app.register_blueprint(usage_blueprint)
 
 
 @app.route("/")

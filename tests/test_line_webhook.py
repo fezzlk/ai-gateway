@@ -97,6 +97,30 @@ def test_handle_text_replies_with_kobito_section(monkeypatch, dashboard):
     assert "Building the LINE dashboard" in str(message)
 
 
+def test_handle_text_replies_with_usage_flex(app, monkeypatch):
+    replies = []
+    usage = {
+        "latest": {"codex": {"primary_used": 23, "recorded_at": "2026-08-18T12:00:00Z"}},
+        "snapshots": [], "tasks": [],
+        "savings": {"message": "データを蓄積中です。"},
+    }
+    monkeypatch.setattr(line_webhook, "_get_usage_dashboard", lambda: usage)
+    monkeypatch.setattr(
+        line_webhook, "_reply_messages",
+        lambda reply_token, messages: replies.append((reply_token, messages)),
+    )
+
+    with app.test_request_context("/line/webhook", base_url="https://gateway.example"):
+        line_webhook._handle_text(
+            {"replyToken": "reply-token", "message": {"type": "text", "text": "利用量"}}
+        )
+
+    message = replies[0][1][0]
+    assert message["type"] == "flex"
+    assert "Codex: 5h 77%残" in str(message)
+    assert "usage.html" in str(message)
+
+
 def test_handle_text_ignores_unknown_command(monkeypatch):
     monkeypatch.setattr(
         line_webhook,

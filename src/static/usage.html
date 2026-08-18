@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI利用量 | Human Agent Board</title>
+  <link rel="stylesheet" href="/usage.css" />
+</head>
+<body>
+  <main>
+    <header><p>Human Agent Board</p><h1>AI利用量</h1><p id="updated">取得中…</p></header>
+    <nav><button data-hours="24">24時間</button><button data-hours="168" class="active">7日</button><button data-hours="720">30日</button></nav>
+    <section id="cards"></section>
+    <section class="panel"><h2>使用率の推移</h2><svg id="chart" viewBox="0 0 800 320" role="img" aria-label="利用量推移グラフ"></svg></section>
+    <section class="panel"><h2>タスク別消費</h2><div id="tasks"></div></section>
+    <section class="panel"><h2>Board導入効果</h2><p id="savings"></p></section>
+  </main>
+  <script src="/usage.js"></script>
+</body>
+</html>
