@@ -215,6 +215,26 @@ def test_board_postback_rejects_unsafe_filename(monkeypatch):
         lambda *args, **kwargs: pytest.fail("unsafe filename must not run"),
     )
 
+
+def test_item_bubble_encodes_unicode_links_and_truncates_body():
+    bubble = line_webhook._item_bubble(
+        {
+            "filename": "item.yaml",
+            "title": "title",
+            "body": "長" * 2500,
+            "related_links": ["https://linear.app/team/issue/FEZ-1/日本語 slug"],
+        },
+        decision=True,
+    )
+
+    body_text = bubble["body"]["contents"][1]["text"]
+    link = bubble["footer"]["contents"][0]["action"]["uri"]
+    assert len(body_text) == 1200
+    assert body_text.endswith("…")
+    assert "日本語" not in link
+    assert "%E6%97%A5" in link
+    assert "%20" in link
+
     line_webhook._handle_postback(
         {
             "replyToken": "reply-token",

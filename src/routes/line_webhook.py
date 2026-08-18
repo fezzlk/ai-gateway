@@ -57,6 +57,9 @@ def _reply_messages(reply_token: str, messages: list) -> None:
     )
     try:
         urllib.request.urlopen(req, timeout=10)
+    except urllib.error.HTTPError as e:
+        details = e.read().decode("utf-8", errors="replace")
+        logger.warning("failed to send LINE reply: HTTP %s: %s", e.code, details[:2000])
     except (urllib.error.URLError, OSError) as e:
         logger.warning("failed to send LINE reply: %s", e)
 
@@ -96,6 +99,14 @@ def _postback_button(label, data, style="secondary"):
 
 
 def _uri_button(label, uri):
+    parsed = urllib.parse.urlsplit(uri)
+    uri = urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc.encode("idna").decode("ascii"),
+        urllib.parse.quote(parsed.path, safe="/%:@-._~!$&'()*+,;="),
+        urllib.parse.quote(parsed.query, safe="=&;%:@/?-._~+"),
+        urllib.parse.quote(parsed.fragment, safe="-._~!$&'()*+,;=:@/?"),
+    ))
     return {
         "type": "button",
         "style": "link",
@@ -115,6 +126,11 @@ def _text(text, size="sm", weight=None, color=None, wrap=True):
 
 def _flex_message(alt_text, contents):
     return {"type": "flex", "altText": alt_text, "contents": contents}
+
+
+def _truncate(value, limit):
+    value = str(value or "")
+    return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
 def _dashboard_flex(data):
@@ -177,7 +193,7 @@ def _item_bubble(item, decision=False):
         "spacing": "md",
         "contents": [
             _text(item.get("title") or "(no title)", size="lg", weight="bold"),
-            _text(item.get("body") or "(no details)", size="sm", color="#4B5563"),
+            _text(_truncate(item.get("body") or "(no details)", 1200), size="sm", color="#4B5563"),
             _text(
                 f"{item.get('from', '?')} · {item.get('type', '?')} · {item.get('created_at', '?')}",
                 size="xxs",
