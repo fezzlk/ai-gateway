@@ -13,6 +13,10 @@ substitutions:
   # postbacks (see routes/line_webhook.py). Same "non-secret but personal,
   # real value only on the trigger" treatment as the MAC_SSH_* vars above.
   _LINE_AUTHORIZED_USER_ID: ""
+  # Whether the setpriority LINE postback (and any SSH-injected Linear MCP
+  # write) is permitted to write to Linear. Non-secret opt-in flag, real
+  # value only on the trigger, same treatment as the vars above.
+  _LINEAR_WRITE_ALLOWED: ""
   # Absolute path to `claude` on the Mac. Non-interactive SSH commands only
   # source ~/.zshenv (not ~/.zshrc), so a PATH built by .zshrc — e.g. via
   # nvm or a user-local bin dir — won't be visible; an absolute path sidesteps
@@ -66,8 +70,8 @@ steps:
       # comma-separated), which collides with --set-env-vars' default
       # delimiter, so the delimiter is switched to "@" (gcloud's
       # "^delim^..." syntax) for this flag.
-      - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}@LINE_AUTHORIZED_USER_ID=${_LINE_AUTHORIZED_USER_ID}"
-      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,LINE_CHANNEL_ACCESS_TOKEN=LINE_CHANNEL_ACCESS_TOKEN:latest"
+      - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}@LINE_AUTHORIZED_USER_ID=${_LINE_AUTHORIZED_USER_ID}@LINEAR_WRITE_ALLOWED=${_LINEAR_WRITE_ALLOWED}"
+      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,LINE_CHANNEL_ACCESS_TOKEN=LINE_CHANNEL_ACCESS_TOKEN:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest"
     waitFor: ["push"]
 
   - id: "smoke-test"
