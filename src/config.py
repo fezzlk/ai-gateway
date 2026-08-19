@@ -37,3 +37,11 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 # from a different userId is silently ignored -- this is the trust boundary
 # that makes accepting an external webhook safe (see line_webhook.py).
 LINE_AUTHORIZED_USER_ID = os.environ.get("LINE_AUTHORIZED_USER_ID", "")
+
+# Personal Linear API key, used directly by this process (not just injected
+# into SSH sessions) to call Linear's GraphQL API for the setpriority
+# postback -- see line_webhook.py's _set_linear_priority().
+LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
+# Explicit opt-in gate: the setpriority postback refuses to write to Linear
+# unless this is set, even if LINEAR_API_KEY is present.
+LINEAR_WRITE_ALLOWED = os.environ.get("LINEAR_WRITE_ALLOWED", "")
