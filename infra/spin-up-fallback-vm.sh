@@ -32,6 +32,25 @@ IMAGE_FAMILY="${IMAGE_FAMILY:-ubuntu-2404-lts-amd64}"
 IMAGE_PROJECT="${IMAGE_PROJECT:-ubuntu-os-cloud}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BOARD_CLI="${BOARD_CLI:-$SCRIPT_DIR/../../human-agent-board/board.py}"
+
+record_result() {
+  local exit_code=$?
+  local result="success"
+  if (( exit_code != 0 )); then
+    result="failed"
+  fi
+  if [[ -f "$BOARD_CLI" ]]; then
+    python3 "$BOARD_CLI" vm record \
+      --action create --result "$result" --instance "$INSTANCE_NAME" \
+      --project "$PROJECT_ID" --zone "$ZONE" >/dev/null || \
+      echo "Warning: failed to record VM create event in human-agent-board." >&2
+  else
+    echo "Warning: human-agent-board CLI not found at $BOARD_CLI; VM event was not recorded." >&2
+  fi
+  return "$exit_code"
+}
+trap record_result EXIT
 
 gcloud compute instances create "$INSTANCE_NAME" \
   --project="$PROJECT_ID" \
