@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-gateway-shell-v2";
+const CACHE_NAME = "ai-gateway-shell-v3";
 const SHELL_FILES = [
   "/",
   "/app.js",

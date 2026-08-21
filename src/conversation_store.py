@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from hashlib import sha256
 from uuid import uuid4
 
 from google.cloud import firestore
@@ -18,9 +19,18 @@ def _serialize(snapshot):
 
 
 class FirestoreConversationStore:
-    def __init__(self, client=None):
+    def __init__(self, owner_id="shared", client=None):
         self.client = client or firestore.Client()
-        self.collection = self.client.collection("ai_gateway_conversations")
+        if owner_id == "shared":
+            # Preserve conversations created by the original single-user app.
+            self.collection = self.client.collection("ai_gateway_conversations")
+        else:
+            owner_key = sha256(owner_id.encode()).hexdigest()
+            self.collection = (
+                self.client.collection("ai_gateway_users")
+                .document(owner_key)
+                .collection("conversations")
+            )
 
     def list_conversations(self, limit=50):
         query = self.collection.order_by(

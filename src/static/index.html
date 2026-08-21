@@ -13,7 +13,18 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <main class="auth-screen hidden" id="auth-screen">
+    <div class="auth-card">
+      <div class="brand-mark auth-brand">AG</div>
+      <h1>ai-gateway</h1>
+      <p>続行するにはログインしてください</p>
+      <div class="auth-providers" id="auth-providers"></div>
+      <div class="auth-error hidden" id="auth-error"></div>
+      <small>会話はアカウントごとに安全に分離されます。</small>
+    </div>
+  </main>
+
+  <div class="app-shell hidden" id="app-shell">
     <aside class="sidebar" id="sidebar" aria-label="会話履歴">
       <div class="brand-row">
         <div class="brand-mark">AG</div>
@@ -23,6 +34,11 @@
       <button class="new-chat" id="new-chat">＋ 新しい会話</button>
       <div class="history-label">履歴</div>
       <nav class="conversation-list" id="conversation-list"></nav>
+      <div class="sidebar-user hidden" id="sidebar-user">
+        <img id="user-picture" alt="" />
+        <div><strong id="user-name"></strong><span id="user-provider"></span></div>
+        <button id="logout-button" title="ログアウト" aria-label="ログアウト">↪</button>
+      </div>
       <div class="sidebar-footer"><span class="status-dot"></span> Gateway online</div>
     </aside>
 

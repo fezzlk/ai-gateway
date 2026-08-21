@@ -2,6 +2,38 @@ import os
 
 SHARED_TOKEN = os.environ.get("AI_GATEWAY_SHARED_TOKEN", "")
 
+# Web authentication. `shared_token` preserves the original single-user
+# bearer-token flow. `oauth` enables whichever providers have complete
+# credentials and stores the authenticated identity in a signed cookie.
+AUTH_MODE = os.environ.get("AUTH_MODE", "shared_token").strip().lower()
+ACCESS_MODE = os.environ.get("ACCESS_MODE", "private").strip().lower()
+SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+LINE_LOGIN_CHANNEL_ID = os.environ.get("LINE_LOGIN_CHANNEL_ID", "")
+LINE_LOGIN_CHANNEL_SECRET = os.environ.get("LINE_LOGIN_CHANNEL_SECRET", "")
+AUTHORIZED_GOOGLE_EMAILS = {
+    value.strip().lower()
+    for value in os.environ.get("AUTHORIZED_GOOGLE_EMAILS", "").split(",")
+    if value.strip()
+}
+AUTHORIZED_LINE_USER_IDS = {
+    value.strip()
+    for value in os.environ.get("AUTHORIZED_LINE_USER_IDS", "").split(",")
+    if value.strip()
+}
+
+
+def _env_bool(name, default=True):
+    raw = os.environ.get(name)
+    return default if raw is None else raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+EXECUTION_ENABLED = _env_bool("EXECUTION_ENABLED", True)
+CLAUDE_ENABLED = _env_bool("CLAUDE_ENABLED", True)
+CODEX_ENABLED = _env_bool("CODEX_ENABLED", False)
+GCP_VM_ENABLED = _env_bool("GCP_VM_ENABLED", False)
+
 MAC_SSH_HOST = os.environ.get("MAC_SSH_HOST", "")
 MAC_SSH_USER = os.environ.get("MAC_SSH_USER", "")
 MAC_SSH_KNOWN_HOST_LINE = os.environ.get("MAC_SSH_KNOWN_HOST_LINE", "")

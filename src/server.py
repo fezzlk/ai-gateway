@@ -1,9 +1,11 @@
 import logging
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -15,6 +17,14 @@ logging.basicConfig(
 _STATIC_DIR = Path(__file__).parent / "static"
 
 app = Flask(__name__, static_folder=str(_STATIC_DIR), static_url_path="")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.secret_key = os.environ.get("SESSION_SECRET") or None
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+)
 
 from auth import api_auth  # noqa: E402
 from routes.conversations import conversations_blueprint  # noqa: E402

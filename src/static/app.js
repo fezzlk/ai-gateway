@@ -8,12 +8,14 @@ const el = Object.fromEntries([
   "run-form", "repo", "prompt", "submit-btn", "messages", "empty-state",
   "conversation-list", "conversation-title", "conversation-status", "new-chat",
   "delete-chat", "run-notice", "run-notice-text", "stop-btn", "sidebar",
-  "sidebar-backdrop", "menu-button", "close-sidebar",
+  "sidebar-backdrop", "menu-button", "close-sidebar", "auth-screen", "auth-providers",
+  "auth-error", "app-shell", "sidebar-user", "user-picture", "user-name",
+  "user-provider", "logout-button",
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
   conversations: [], active: null, running: false, controller: null,
-  currentAssistant: null, lastPrompt: "",
+  currentAssistant: null, lastPrompt: "", auth: null,
 };
 
 function getToken() {
@@ -26,17 +28,18 @@ function getToken() {
 }
 
 async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (state.auth?.mode === "shared_token") headers.Authorization = `Bearer ${getToken()}`;
   const response = await fetch(path, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-      ...(options.headers || {}),
-    },
+    headers,
   });
-  if (response.status === 401) {
+  if (response.status === 401 && state.auth?.mode === "shared_token") {
     localStorage.removeItem(TOKEN_KEY);
     throw new Error("認証に失敗しました。再読み込みしてトークンを入力してください。");
+  } else if (response.status === 401) {
+    showLogin(state.auth);
+    throw new Error("ログインセッションの有効期限が切れました。");
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -194,6 +197,10 @@ async function saveMessage(role, content, kind = "message") {
 }
 
 async function runTask(prompt) {
+  if (!state.auth.execution?.enabled || !state.auth.execution?.claude) {
+    addMessage({ role: "system", content: "この環境ではClaude実行が無効です。", created_at: new Date() });
+    return;
+  }
   await ensureConversation(prompt);
   const repo = el.repo.value.trim();
   localStorage.setItem(REPO_KEY, repo);
@@ -217,7 +224,10 @@ async function runTask(prompt) {
     const response = await fetch("/api/run", {
       method: "POST",
       signal: state.controller.signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      headers: {
+        "Content-Type": "application/json",
+        ...(state.auth.mode === "shared_token" ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
       body: JSON.stringify({ prompt, resume_session_id: state.active.session_id, repo: repo || null }),
     });
     if (!response.ok || !response.body) throw new Error(`実行リクエストに失敗しました (${response.status})`);
@@ -336,10 +346,54 @@ el["conversation-title"].addEventListener("change", async () => {
 el["menu-button"].addEventListener("click", openSidebar);
 el["close-sidebar"].addEventListener("click", closeSidebar);
 el["sidebar-backdrop"].addEventListener("click", closeSidebar);
+el["logout-button"].addEventListener("click", async () => {
+  await fetch("/auth/logout", { method: "POST" });
+  window.location.reload();
+});
+
+function showLogin(auth, message = "") {
+  el["app-shell"].classList.add("hidden");
+  el["auth-screen"].classList.remove("hidden");
+  el["auth-providers"].replaceChildren();
+  const labels = { google: "Googleで続行", line: "LINEで続行" };
+  Object.entries(auth?.providers || {}).filter(([, enabled]) => enabled).forEach(([provider]) => {
+    const link = document.createElement("a");
+    link.className = `auth-button ${provider}`;
+    link.href = `/auth/login/${provider}`;
+    link.textContent = labels[provider];
+    el["auth-providers"].appendChild(link);
+  });
+  if (!el["auth-providers"].children.length) message = message || "ログイン方法が設定されていません。";
+  el["auth-error"].textContent = message;
+  el["auth-error"].classList.toggle("hidden", !message);
+}
+
+function showApp(auth) {
+  el["auth-screen"].classList.add("hidden");
+  el["app-shell"].classList.remove("hidden");
+  if (auth.user) {
+    el["sidebar-user"].classList.remove("hidden");
+    el["user-name"].textContent = auth.user.name || auth.user.email || "User";
+    el["user-provider"].textContent = auth.user.provider;
+    el["user-picture"].src = auth.user.picture || "/icons/icon-192.png";
+  }
+  const canRun = auth.execution?.enabled && auth.execution?.claude;
+  el.prompt.disabled = !canRun;
+  el["submit-btn"].disabled = !canRun;
+  if (!canRun) el.prompt.placeholder = "この環境ではClaude実行が無効です";
+}
 
 async function initialize() {
   el.repo.value = localStorage.getItem(REPO_KEY) || "";
   try {
+    const authResponse = await fetch("/auth/session");
+    if (!authResponse.ok) throw new Error("認証設定を取得できませんでした。");
+    state.auth = await authResponse.json();
+    if (state.auth.mode === "oauth" && !state.auth.authenticated) {
+      showLogin(state.auth);
+      return;
+    }
+    showApp(state.auth);
     await refreshConversations();
     const preferred = localStorage.getItem(ACTIVE_KEY);
     const target = state.conversations.find((item) => item.id === preferred) || state.conversations[0];
