@@ -1,35 +1,71 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ai-gateway</title>
-
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0f172a" />
-
-  <!-- iOS Safari ignores manifest.json for Add to Home Screen styling -->
+  <meta name="theme-color" content="#0b0d12" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ai-gateway" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <main>
-    <h1>ai-gateway</h1>
-    <p class="env-badge" id="env-badge">via Mac</p>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="会話履歴">
+      <div class="brand-row">
+        <div class="brand-mark">AG</div>
+        <div><strong>ai-gateway</strong><span>Claude via Mac</span></div>
+        <button class="icon-button close-sidebar" id="close-sidebar" aria-label="履歴を閉じる">×</button>
+      </div>
+      <button class="new-chat" id="new-chat">＋ 新しい会話</button>
+      <div class="history-label">履歴</div>
+      <nav class="conversation-list" id="conversation-list"></nav>
+      <div class="sidebar-footer"><span class="status-dot"></span> Gateway online</div>
+    </aside>
 
-    <form id="run-form">
-      <input type="text" id="repo" placeholder="Repo (optional, e.g. ai-gateway)" />
-      <textarea id="prompt" placeholder="What should Claude do?" rows="4" required></textarea>
-      <button type="submit" id="submit-btn">Run</button>
-    </form>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
-    <pre id="output"></pre>
-  </main>
+    <main class="chat-panel">
+      <header class="chat-header">
+        <button class="icon-button menu-button" id="menu-button" aria-label="履歴を開く">☰</button>
+        <div class="conversation-meta">
+          <input id="conversation-title" value="新しい会話" aria-label="会話タイトル" />
+          <span id="conversation-status">準備完了</span>
+        </div>
+        <button class="icon-button danger-button" id="delete-chat" aria-label="会話を削除" title="会話を削除">⌫</button>
+      </header>
 
+      <section class="messages" id="messages" aria-live="polite">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">⌁</div>
+          <h1>何から始めますか？</h1>
+          <p>リポジトリを選んで、Claudeに作業を依頼できます。会話はサーバーに保存されます。</p>
+        </div>
+      </section>
+
+      <div class="composer-wrap">
+        <div class="run-notice hidden" id="run-notice">
+          <span class="spinner"></span><span id="run-notice-text">Claudeが作業中です…</span>
+          <button id="stop-btn">停止</button>
+        </div>
+        <form class="composer" id="run-form">
+          <textarea id="prompt" placeholder="Claudeにメッセージを送る" rows="1" required></textarea>
+          <div class="composer-actions">
+            <label class="repo-field" title="実行対象リポジトリ">
+              <span>⌘</span>
+              <input type="text" id="repo" placeholder="repository (optional)" />
+            </label>
+            <span class="shortcut">⌘↵ で送信</span>
+            <button type="submit" id="submit-btn" aria-label="送信">↑</button>
+          </div>
+        </form>
+        <p class="composer-note">AIの出力には誤りが含まれる場合があります。重要な変更は確認してください。</p>
+      </div>
+    </main>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>

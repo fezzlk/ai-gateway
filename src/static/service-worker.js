@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-gateway-shell-v1";
+const CACHE_NAME = "ai-gateway-shell-v2";
 const SHELL_FILES = [
   "/",
   "/app.js",
@@ -39,7 +39,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
-  );
+  // Network-first keeps deployments from showing an old UI indefinitely,
+  // while the cached shell still makes the installed PWA open offline.
+  event.respondWith(fetch(request).then((response) => {
+    const copy = response.clone();
+    caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+    return response;
+  }).catch(() => caches.match(request)));
 });
