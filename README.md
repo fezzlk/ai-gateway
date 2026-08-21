@@ -4,6 +4,43 @@ Unified mobile-friendly gateway for routing work between Claude and Codex
 across execution environments (Web/Routines, Mac via Tailscale, GCP VM
 fallback).
 
+## Web chat and conversation storage
+
+The root page is a responsive chat client with server-side conversation
+history, Markdown/code rendering, code copy, run cancellation, retry, title
+editing, repository selection, and conversation switching/deletion. Claude's
+session ID is stored with each conversation, so switching back to a thread
+continues the corresponding Claude session.
+
+Conversation data is stored in the project's Firestore Standard default
+database. Cloud Run's local filesystem is intentionally not used because it
+is ephemeral. One-time setup (Tokyo region) is:
+
+```bash
+gcloud services enable firestore.googleapis.com --project="$PROJECT_ID"
+gcloud firestore databases create \
+  --database='(default)' \
+  --location=asia-northeast1 \
+  --type=firestore-native \
+  --project="$PROJECT_ID"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role=roles/datastore.user
+```
+
+Do not run the database creation command if a `(default)` database already
+exists. Check first with:
+
+```bash
+gcloud firestore databases describe --database='(default)' --project="$PROJECT_ID"
+```
+
+Firestore's Standard free quota includes 1 GiB stored data, 50,000 document
+reads/day, and 20,000 writes/day. A personal gateway should normally remain
+within that quota, but billing remains usage-based beyond it. The shared
+gateway bearer token protects all conversation endpoints; this is a single-
+user data model, not per-user tenancy.
+
 ## Execution environment priority
 
 1. Claude Web/Routines or Codex Cloud (no PC required, MCP limited to
@@ -20,6 +57,7 @@ human-agent-boardとkobitoを設定済みの環境では、認可済みユーザ
 - `判断待ち` / `decisions`: 判断材料リンクを開き、その場で承認・却下
 - `依頼` / `requests`: 依頼・通知を確認し、処理済みに変更
 - `kobito状況` / `kobito status`: 進行中と直近の完了・失敗、次の作業、関連リンク
+- `VM履歴` / `VMログ` / `vm history`: fallback VMの作成・削除の成功・失敗を直近10件表示
 
 リッチメニューを設定すると、上記のうち`board`、`判断待ち`、`kobito状況`を常時ボタンから開ける。画像生成と設定は次の通り。
 
@@ -100,6 +138,8 @@ codex   # follow login prompt
 # When done:
 INSTANCE_NAME=<instance-name> ./infra/teardown-fallback-vm.sh
 ```
+
+両スクリプトの実行結果は、隣接する`human-agent-board`リポジトリの`board/vm/events.jsonl`へ自動記録される。LINE BotのBoard画面にある「VM履歴」ボタン、または`VM履歴`メッセージから確認できる。`BOARD_CLI`を指定すれば別の`board.py`を利用できる。記録処理の失敗はVM操作自体の終了コードを変更しない。GCP Consoleや直接実行した`gcloud`は記録対象外。
 
 ### Why no credentials in the startup-script
 
