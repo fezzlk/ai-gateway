@@ -101,14 +101,16 @@ class _KobitoRunTracker:
         if outcome == "failed":
             _board_command(
                 "add", "--direction", "agent-to-user", "--from", "kobito",
-                "--type", "action_required", "--dedupe-key", "kobito-gateway",
+                "--type", "action_required", "--dedupe-key", "kobito-health",
                 "--title", "kobito実行基盤の確認が必要です",
-                "--body", "gatewayまたはSSHエラーで実行が終了しました。Macの起動、Tailscale、SSH接続を確認してください。次回の定期実行で自動再試行します。",
+                "--body", f"原因: {summary}\n影響: 今回のkobito作業は開始または完了できませんでした。\n"
+                "対処: Macの起動、Tailscale、SSH接続、接続preflightの順に確認してください。\n"
+                "再試行: 次の3時間ごとの定期実行で自動再試行します。",
             )
         else:
             _board_command(
                 "resolve", "--direction", "agent-to-user",
-                "--dedupe-key", "kobito-gateway",
+                "--dedupe-key", "kobito-health",
             )
 
 
@@ -131,22 +133,30 @@ def run_task():
     def generate():
         tracker = _KobitoRunTracker() if _is_kobito_run(prompt, source) else None
         failed = False
+        failure_message = None
         if tracker:
             tracker.start()
         try:
             raw_lines = run_remote_claude(prompt, resume_session_id, repo)
             for line in raw_lines:
-                if '"type":"gateway_error"' in line.replace(" ", ""):
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    event = {}
+                if event.get("type") == "gateway_error":
                     failed = True
+                    failure_message = event.get("message") or "gateway error"
                 yield from to_sse_frames([line])
-        except Exception:
+        except Exception as error:
             failed = True
+            failure_message = f"{type(error).__name__}: {error}"
             raise
         finally:
             if tracker:
                 tracker.finish(
                     "failed" if failed else "completed",
-                    "gatewayまたはSSHエラーで終了" if failed else "Claude Codeセッションが終了",
+                    failure_message or "gatewayまたはSSHエラーで終了"
+                    if failed else "Claude Codeセッションが終了",
                 )
 
     return Response(
