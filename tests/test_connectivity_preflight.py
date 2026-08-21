@@ -48,4 +48,6 @@ def test_credentials_are_not_returned(monkeypatch):
     command = ssh_runner._with_agent_credentials("true")
     assert "github_pat_secret" in command
     assert "lin_api_secret" in command
+    assert "GIT_CONFIG_KEY_0=credential.helper" in command
+    assert "password=$GITHUB_PERSONAL_ACCESS_TOKEN" in command
     # The helper is command construction only; diagnostics never echo this string.

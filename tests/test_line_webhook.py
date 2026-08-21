@@ -51,6 +51,12 @@ def dashboard():
             }
         ],
         "status_history": [],
+        "kobito_run": {
+            "health": "degraded",
+            "last_seen_at": "2026-08-18T05:00:00Z",
+            "consecutive_failures": 3,
+            "latest": {"summary": "GitHub push authentication failed"},
+        },
     }
 
 
@@ -95,6 +101,8 @@ def test_handle_text_replies_with_kobito_section(monkeypatch, dashboard):
     assert message["type"] == "flex"
     assert message["altText"] == "kobito状況"
     assert "Building the LINE dashboard" in str(message)
+    assert "障害継続中" in str(message)
+    assert "連続失敗: 3回" in str(message)
 
 
 def test_handle_text_replies_with_usage_flex(app, monkeypatch):
@@ -119,6 +127,48 @@ def test_handle_text_replies_with_usage_flex(app, monkeypatch):
     assert message["type"] == "flex"
     assert "Codex: 5h 77%残" in str(message)
     assert "usage.html" in str(message)
+
+
+def test_handle_text_replies_with_vm_history(monkeypatch):
+    replies = []
+    history = [{
+        "action": "create",
+        "result": "success",
+        "instance": "ai-gateway-fallback-20260818-120000",
+        "project": "sample-project",
+        "zone": "asia-northeast1-a",
+        "recorded_at": "2026-08-18T03:00:00Z",
+    }]
+    monkeypatch.setattr(line_webhook, "_get_vm_history", lambda: history)
+    monkeypatch.setattr(
+        line_webhook, "_reply_messages",
+        lambda reply_token, messages: replies.append((reply_token, messages)),
+    )
+
+    line_webhook._handle_text(
+        {"replyToken": "reply-token", "message": {"type": "text", "text": "VM履歴"}}
+    )
+
+    message = replies[0][1][0]
+    assert message["type"] == "flex"
+    assert message["altText"] == "GCP VM起動・停止履歴"
+    assert "起動（作成） · 成功" in str(message)
+    assert "ai-gateway-fallback-20260818-120000" in str(message)
+
+
+def test_board_vm_postback_replies_with_history(monkeypatch):
+    replies = []
+    monkeypatch.setattr(line_webhook, "_get_vm_history", lambda: [])
+    monkeypatch.setattr(
+        line_webhook, "_reply_messages",
+        lambda reply_token, messages: replies.append((reply_token, messages)),
+    )
+
+    line_webhook._handle_postback(
+        {"replyToken": "reply-token", "postback": {"data": "board|vm"}}
+    )
+
+    assert "記録された操作はありません。" in str(replies[0][1][0])
 
 
 def test_handle_text_ignores_unknown_command(monkeypatch):

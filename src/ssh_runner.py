@@ -76,7 +76,18 @@ def _with_agent_credentials(remote_cmd: str) -> str:
     assignments = []
     if config.GITHUB_PERSONAL_ACCESS_TOKEN:
         token = shlex.quote(config.GITHUB_PERSONAL_ACCESS_TOKEN)
-        assignments.extend([f"GITHUB_PERSONAL_ACCESS_TOKEN={token}", f"GH_TOKEN={token}"])
+        # GH_TOKEN is consumed by gh/MCP, while git itself needs a credential
+        # helper in a non-interactive SSH session. Configure it per-process so
+        # no token is written to disk or to the user's global git config.
+        helper = shlex.quote(
+            "!f() { echo username=x-access-token; "
+            "echo password=$GITHUB_PERSONAL_ACCESS_TOKEN; }; f"
+        )
+        assignments.extend([
+            f"GITHUB_PERSONAL_ACCESS_TOKEN={token}", f"GH_TOKEN={token}",
+            "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper",
+            f"GIT_CONFIG_VALUE_0={helper}",
+        ])
     if config.LINEAR_API_KEY:
         assignments.append(f"LINEAR_API_KEY={shlex.quote(config.LINEAR_API_KEY)}")
     if config.LINEAR_WRITE_ALLOWED:

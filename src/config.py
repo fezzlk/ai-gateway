@@ -35,6 +35,10 @@ CONNECTIVITY_PREFLIGHT_PATH = os.environ.get(
 CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS = int(
     os.environ.get("CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS", "30")
 )
+HUMAN_AGENT_BOARD_CLI = os.environ.get(
+    "HUMAN_AGENT_BOARD_CLI", "~/repos/human-agent-board/board.py"
+)
+KOBITO_HEARTBEAT_SECONDS = int(os.environ.get("KOBITO_HEARTBEAT_SECONDS", "60"))
 
 # LINE Messaging API channel used for human-agent-board's /line/webhook route
 # (see routes/line_webhook.py). LINE_CHANNEL_ACCESS_TOKEN here is only used

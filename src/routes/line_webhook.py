@@ -37,6 +37,7 @@ _DECISION_COMMANDS = {"判断待ち", "decisions"}
 _REQUEST_COMMANDS = {"依頼", "requests"}
 _STATUS_COMMANDS = {"kobito状況", "kobito 状況", "kobito status"}
 _USAGE_COMMANDS = {"利用量", "usage", "残量"}
+_VM_HISTORY_COMMANDS = {"vm履歴", "vm 履歴", "vm history", "vmログ", "vm ログ"}
 _BOARD_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+\.yaml$")
 
 
@@ -99,6 +100,13 @@ def _get_usage_dashboard(hours=168):
     return json.loads(output)
 
 
+def _get_vm_history(recent=10):
+    returncode, output = _run_board_command(f"vm list --json --recent {int(recent)}")
+    if returncode != 0:
+        raise RuntimeError(output.strip() or "board VM history failed")
+    return json.loads(output)
+
+
 def _postback_button(label, data, style="secondary"):
     return {
         "type": "button",
@@ -145,6 +153,13 @@ def _truncate(value, limit):
 
 def _dashboard_flex(data):
     current = data.get("status_current", [])
+    run = data.get("kobito_run", {})
+    health_labels = {
+        "healthy": "正常", "running": "実行中", "degraded": "障害継続中",
+        "stale": "停止疑い", "missing": "起動未確認",
+    }
+    run_label = health_labels.get(run.get("health"), "不明")
+    run_color = "#059669" if run.get("health") in ("healthy", "running") else "#DC2626"
     status_preview = "\n".join(
         f"• {item.get('work_id', '?')} [{item.get('state', '?')}] {item.get('title', '')}"
         for item in current[:3]
@@ -158,6 +173,11 @@ def _dashboard_flex(data):
             _text(f"判断待ち  {len(data.get('decisions', []))}件", weight="bold", color="#D97706"),
             _text(f"通知  {len(data.get('notifications', []))}件"),
             _text(f"ユーザー依頼  {len(data.get('user_requests', []))}件"),
+            _text(f"kobito稼働  {run_label}", weight="bold", color=run_color),
+            _text(
+                f"最終確認 {run.get('last_seen_at') or 'なし'} / 連続失敗 {run.get('consecutive_failures', 0)}回",
+                size="xs", color="#4B5563",
+            ),
             _text(f"kobito進行中  {len(current)}件", weight="bold", color="#2563EB"),
             {"type": "separator"},
             _text(status_preview, size="xs", color="#4B5563"),
@@ -173,6 +193,7 @@ def _dashboard_flex(data):
             _postback_button("依頼・通知", "board|requests"),
             _postback_button("kobito状況", "board|kobito"),
             _postback_button("AI利用量", "board|usage"),
+            _postback_button("VM履歴", "board|vm"),
             _postback_button("更新", "board|home"),
         ],
     }
@@ -228,8 +249,9 @@ def _item_bubble(item, decision=False):
 
 
 def _status_bubble(item):
+    stale_label = " ⚠ 更新停止" if item.get("stale") else ""
     contents = [
-        _text(f"{item.get('work_id', '?')} [{item.get('state', '?')}]", size="lg", weight="bold"),
+        _text(f"{item.get('work_id', '?')} [{item.get('state', '?')}]{stale_label}", size="lg", weight="bold", color="#DC2626" if item.get("stale") else None),
         _text(item.get("title") or "(no title)", weight="bold"),
         _text(item.get("summary") or "(no summary)", color="#4B5563"),
     ]
@@ -245,6 +267,30 @@ def _status_bubble(item):
             "spacing": "sm",
             "contents": _link_buttons(item) or [_postback_button("Boardへ戻る", "board|home")],
         },
+    }
+
+
+def _run_health_bubble(run):
+    labels = {
+        "healthy": "正常", "running": "実行中", "degraded": "障害継続中",
+        "stale": "停止疑い", "missing": "起動未確認",
+    }
+    health = run.get("health", "unknown")
+    color = "#059669" if health in ("healthy", "running") else "#DC2626"
+    contents = [
+        _text(f"kobito稼働: {labels.get(health, '不明')}", size="lg", weight="bold", color=color),
+        _text(f"最終確認: {run.get('last_seen_at') or 'なし'}", size="sm"),
+        _text(f"連続失敗: {run.get('consecutive_failures', 0)}回", size="sm"),
+    ]
+    latest = run.get("latest") or {}
+    if latest.get("summary"):
+        contents.append(_text(f"直近: {latest['summary']}", color="#4B5563"))
+    if latest.get("recovery"):
+        contents.append(_text(f"対処: {latest['recovery']}", color="#2563EB"))
+    return {
+        "type": "bubble",
+        "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
+        "footer": {"type": "box", "layout": "vertical", "contents": [_postback_button("Boardへ戻る", "board|home")]},
     }
 
 
@@ -271,8 +317,10 @@ def _dashboard_section_message(section, data):
         items = data.get("notifications", []) + data.get("user_requests", [])
         return _carousel_or_empty("依頼・通知", items, _item_bubble)
     if section == "kobito":
-        items = data.get("status_current", []) + data.get("status_history", [])
-        return _carousel_or_empty("kobito状況", items, _status_bubble)
+        status_items = data.get("status_current", []) + data.get("status_history", [])
+        bubbles = [_run_health_bubble(data.get("kobito_run", {}))]
+        bubbles.extend(_status_bubble(item) for item in status_items[:9])
+        return _flex_message("kobito状況", {"type": "carousel", "contents": bubbles})
     return _dashboard_flex(data)
 
 
@@ -302,6 +350,38 @@ def _usage_flex(data, web_url):
             "footer": {
                 "type": "box", "layout": "vertical", "spacing": "sm",
                 "contents": [_uri_button("詳細グラフ", web_url), _postback_button("更新", "board|usage")],
+            },
+        },
+    )
+
+
+def _vm_history_flex(items):
+    contents = [_text("GCP VM履歴", size="xl", weight="bold")]
+    if not items:
+        contents.append(_text("記録された操作はありません。", color="#9CA3AF"))
+    labels = {"create": "起動（作成）", "delete": "停止（削除）"}
+    for item in items[:10]:
+        action = labels.get(item.get("action"), item.get("action", "不明"))
+        result = "成功" if item.get("result") == "success" else "失敗"
+        color = "#059669" if item.get("result") == "success" else "#DC2626"
+        contents.extend([
+            {"type": "separator"},
+            _text(f"{action} · {result}", weight="bold", color=color),
+            _text(item.get("instance", "?"), size="sm"),
+            _text(
+                f"{item.get('project', '?')} / {item.get('zone', '?')}",
+                size="xs", color="#4B5563",
+            ),
+            _text(item.get("recorded_at", "?"), size="xxs", color="#9CA3AF"),
+        ])
+    return _flex_message(
+        "GCP VM起動・停止履歴",
+        {
+            "type": "bubble",
+            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
+            "footer": {
+                "type": "box", "layout": "vertical",
+                "contents": [_postback_button("更新", "board|vm")],
             },
         },
     )
@@ -417,6 +497,9 @@ def _handle_board_postback(event: dict, data: str) -> None:
             web_url = request.host_url.rstrip("/") + "/usage.html"
             _reply_messages(reply_token, [_usage_flex(usage, web_url)])
             return
+        if action == "vm":
+            _reply_messages(reply_token, [_vm_history_flex(_get_vm_history())])
+            return
         if action in {"home", "decisions", "requests", "kobito"}:
             dashboard = _get_dashboard()
             _reply_messages(reply_token, [_dashboard_section_message(action, dashboard)])
@@ -461,7 +544,8 @@ def _handle_text(event: dict) -> None:
     text = event.get("message", {}).get("text", "").strip()
     normalized = text.lower()
     if normalized not in (
-        _DASHBOARD_COMMANDS | _DECISION_COMMANDS | _REQUEST_COMMANDS | _STATUS_COMMANDS | _USAGE_COMMANDS
+        _DASHBOARD_COMMANDS | _DECISION_COMMANDS | _REQUEST_COMMANDS | _STATUS_COMMANDS
+        | _USAGE_COMMANDS | _VM_HISTORY_COMMANDS
     ):
         return
 
@@ -470,6 +554,9 @@ def _handle_text(event: dict) -> None:
             usage = _get_usage_dashboard()
             web_url = request.host_url.rstrip("/") + "/usage.html"
             _reply_messages(reply_token, [_usage_flex(usage, web_url)])
+            return
+        if normalized in _VM_HISTORY_COMMANDS:
+            _reply_messages(reply_token, [_vm_history_flex(_get_vm_history())])
             return
         dashboard = _get_dashboard()
     except Exception as e:  # noqa: BLE001 -- must not raise inside webhook handler
