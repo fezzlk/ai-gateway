@@ -41,6 +41,38 @@ within that quota, but billing remains usage-based beyond it. The shared
 gateway bearer token protects all conversation endpoints; this is a single-
 user data model, not per-user tenancy.
 
+### Web authentication modes
+
+Authentication and execution backends are controlled by environment
+variables. `AUTH_MODE=shared_token` preserves the original bearer-token flow.
+`AUTH_MODE=oauth` enables Google and/or LINE Login; a provider is shown only
+when both its ID and secret are configured. OAuth conversations are stored
+under a one-way hash of the provider's stable subject ID, so users cannot read
+or modify each other's conversations.
+
+| Variable | Values / purpose |
+| --- | --- |
+| `AUTH_MODE` | `shared_token` or `oauth` |
+| `ACCESS_MODE` | `private` (allowlist) or `authenticated` (any signed-in account) |
+| `AUTHORIZED_GOOGLE_EMAILS` | Comma-separated verified emails for private mode |
+| `AUTHORIZED_LINE_USER_IDS` | Comma-separated LINE Login user IDs for private mode |
+| `EXECUTION_ENABLED` | Global execution kill switch |
+| `CLAUDE_ENABLED` | Enable the currently implemented Claude executor |
+| `CODEX_ENABLED` | Advertise Codex availability (executor not yet implemented) |
+| `GCP_VM_ENABLED` | Advertise GCP VM availability |
+
+OAuth secrets belong in Secret Manager (`SESSION_SECRET`,
+`GOOGLE_OAUTH_CLIENT_SECRET`, and `LINE_LOGIN_CHANNEL_SECRET`). IDs and access
+policy are Cloud Build trigger substitutions. Configure these callback URLs:
+
+- Google: `https://<service-host>/auth/callback/google`
+- LINE Login: `https://<service-host>/auth/callback/line`
+
+Google uses the OpenID Connect authorization-code flow with a verified email.
+LINE Login uses OpenID Connect with server-side ID-token verification. Both
+flows validate `state` and `nonce`; the resulting application session is kept
+in a Secure, HttpOnly, SameSite=Lax signed cookie for 30 days.
+
 ## Execution environment priority
 
 1. Claude Web/Routines or Codex Cloud (no PC required, MCP limited to
