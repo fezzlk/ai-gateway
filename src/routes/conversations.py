@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from conversation_store import FirestoreConversationStore
 
@@ -9,7 +9,11 @@ conversations_blueprint = Blueprint(
 
 def _store():
     factory = current_app.config.get("CONVERSATION_STORE_FACTORY", FirestoreConversationStore)
-    return factory()
+    try:
+        return factory(g.user_id)
+    except TypeError:
+        # Small in-memory stores used by route tests predate owner scoping.
+        return factory()
 
 
 def _clean_text(value, max_length):
