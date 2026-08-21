@@ -114,6 +114,8 @@ class _KobitoRunTracker:
 
 @run_task_blueprint.route("/run", methods=["POST"])
 def run_task():
+    if not config.EXECUTION_ENABLED or not config.CLAUDE_ENABLED:
+        return {"error": "Claude execution is disabled"}, 503
     body = request.get_json(force=True, silent=True) or {}
     prompt = (body.get("prompt") or "").strip()
     resume_session_id = body.get("resume_session_id") or None
