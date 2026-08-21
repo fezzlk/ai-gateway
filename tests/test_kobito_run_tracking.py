@@ -60,6 +60,8 @@ def test_kobito_gateway_error_records_failed(monkeypatch):
     response.get_data()
 
     assert any("finish" in call and "failed" in call for call in calls)
+    assert any("finish" in call and "ssh failed" in call for call in calls)
+    assert any("add" in call and "kobito-health" in call for call in calls)
 
 
 def test_kobito_health_opens_deduplicated_action_request(monkeypatch):
