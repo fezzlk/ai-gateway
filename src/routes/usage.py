@@ -1,7 +1,9 @@
 import json
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
+import config
+from auth import is_private_user
 from ssh_runner import run_remote_command
 
 usage_blueprint = Blueprint("usage_blueprint", __name__)
@@ -9,6 +11,8 @@ usage_blueprint = Blueprint("usage_blueprint", __name__)
 
 @usage_blueprint.route("/api/usage", methods=["GET"])
 def usage():
+    if config.AUTH_MODE == "oauth" and config.USAGE_PRIVATE_ONLY and not is_private_user(g.user):
+        return jsonify(error="usage dashboard is private"), 403
     try:
         hours = min(24 * 30, max(1, int(request.args.get("hours", 168))))
     except ValueError:

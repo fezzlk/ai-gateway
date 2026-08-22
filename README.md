@@ -56,10 +56,12 @@ or modify each other's conversations.
 | `ACCESS_MODE` | `private` (allowlist) or `authenticated` (any signed-in account) |
 | `AUTHORIZED_GOOGLE_EMAILS` | Comma-separated verified emails for private mode |
 | `AUTHORIZED_LINE_USER_IDS` | Comma-separated LINE Login user IDs for private mode |
+| `LIFF_ID` | LIFF app ID used by `/usage.html`; empty disables LIFF |
 | `EXECUTION_ENABLED` | Global execution kill switch |
 | `CLAUDE_ENABLED` | Enable the currently implemented Claude executor |
 | `CODEX_ENABLED` | Advertise Codex availability (executor not yet implemented) |
 | `GCP_VM_ENABLED` | Advertise GCP VM availability |
+| `USAGE_PRIVATE_ONLY` | Keep `/api/usage` restricted to allowlisted identities |
 
 OAuth secrets belong in Secret Manager (`SESSION_SECRET`,
 `GOOGLE_OAUTH_CLIENT_SECRET`, and `LINE_LOGIN_CHANNEL_SECRET`). IDs and access
@@ -67,6 +69,12 @@ policy are Cloud Build trigger substitutions. Configure these callback URLs:
 
 - Google: `https://<service-host>/auth/callback/google`
 - LINE Login: `https://<service-host>/auth/callback/line`
+
+The usage dashboard can reuse that same LINE Login channel through a LIFF app.
+Set its Endpoint URL to `https://<service-host>/usage.html`, request only
+`openid` and `profile`, and put its public LIFF ID in `LIFF_ID`. The browser
+sends the LIFF ID token to `/auth/liff`; the server verifies it directly with
+LINE before creating the same application session used by ordinary LINE Login.
 
 Google uses the OpenID Connect authorization-code flow with a verified email.
 LINE Login uses OpenID Connect with server-side ID-token verification. Both
