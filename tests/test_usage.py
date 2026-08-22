@@ -15,6 +15,7 @@ from routes import usage  # noqa: E402
 def app(monkeypatch):
     monkeypatch.setattr(config, "SHARED_TOKEN", "secret")
     flask_app = Flask(__name__)
+    flask_app.secret_key = "test-secret"
     flask_app.register_blueprint(api_auth)
     flask_app.register_blueprint(usage.usage_blueprint)
     return flask_app
@@ -45,3 +46,16 @@ def test_usage_rejects_invalid_hours(app):
         "/api/usage?hours=nope", headers={"Authorization": "Bearer secret"}
     )
     assert response.status_code == 400
+
+
+def test_usage_is_owner_only_in_oauth_mode(app, monkeypatch):
+    monkeypatch.setattr(config, "AUTH_MODE", "oauth")
+    monkeypatch.setattr(config, "USAGE_PRIVATE_ONLY", True)
+    client = app.test_client()
+    with client.session_transaction() as flask_session:
+        flask_session["user"] = {
+            "provider": "line",
+            "subject": "not-the-owner",
+            "user_id": "line:not-the-owner",
+        }
+    assert client.get("/api/usage").status_code == 403

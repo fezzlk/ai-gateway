@@ -19,6 +19,7 @@ def app(monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_OAUTH_CLIENT_SECRET", "google-secret")
     monkeypatch.setattr(config, "LINE_LOGIN_CHANNEL_ID", "line-id")
     monkeypatch.setattr(config, "LINE_LOGIN_CHANNEL_SECRET", "line-secret")
+    monkeypatch.setattr(config, "LIFF_ID", "123-liff-id")
     flask_app = Flask(__name__)
     flask_app.secret_key = "test-secret"
     flask_app.config.update(SESSION_COOKIE_SECURE=False, TESTING=True)
@@ -38,6 +39,7 @@ def test_oauth_api_requires_session(app):
 def test_auth_session_lists_configured_providers(app):
     payload = app.test_client().get("/auth/session").get_json()
     assert payload["providers"] == {"google": True, "line": True}
+    assert payload["liff_id"] == "123-liff-id"
     assert payload["authenticated"] is False
 
 
@@ -107,3 +109,29 @@ def test_private_mode_rejects_unlisted_google_account(app, monkeypatch):
             "nonce": "nonce",
         }
     assert client.get("/auth/callback/google?state=state&code=code").status_code == 403
+
+
+def test_liff_id_token_creates_same_line_session(app, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        auth,
+        "_post_form",
+        lambda url, values: (
+            calls.append((url, values))
+            or {"sub": "line-user", "name": "LINE User", "picture": "https://example.com/p.png"}
+        ),
+    )
+    client = app.test_client()
+    response = client.post("/auth/liff", json={"id_token": "signed-id-token"})
+    assert response.status_code == 200
+    assert calls == [
+        (
+            "https://api.line.me/oauth2/v2.1/verify",
+            {"id_token": "signed-id-token", "client_id": "line-id"},
+        )
+    ]
+    assert client.get("/api/whoami").get_json()["user_id"] == "line:line-user"
+
+
+def test_liff_login_rejects_missing_token(app):
+    assert app.test_client().post("/auth/liff", json={}).status_code == 400

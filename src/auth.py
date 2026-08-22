@@ -42,6 +42,36 @@ def _is_allowed(user):
     return user["subject"] in allowed_line_ids
 
 
+def is_private_user(user):
+    """Whether an OAuth identity is explicitly trusted for owner-only data."""
+    if not user:
+        return False
+    if user["provider"] == "google":
+        return bool(user.get("email")) and user["email"].lower() in config.AUTHORIZED_GOOGLE_EMAILS
+    allowed_line_ids = config.AUTHORIZED_LINE_USER_IDS or {config.LINE_AUTHORIZED_USER_ID}
+    return user["subject"] in allowed_line_ids
+
+
+def _line_user(profile):
+    return {
+        "provider": "line",
+        "subject": profile["sub"],
+        "user_id": f"line:{profile['sub']}",
+        "name": profile.get("name") or "LINE user",
+        "email": profile.get("email"),
+        "picture": profile.get("picture"),
+    }
+
+
+def _establish_session(user):
+    if not _is_allowed(user):
+        return jsonify(error="this account is not allowed"), 403
+    session.clear()
+    session["user"] = user
+    session.permanent = True
+    return None
+
+
 def _post_form(url, values):
     body = urllib.parse.urlencode(values).encode()
     req = urllib.request.Request(
@@ -87,6 +117,7 @@ def auth_session():
         authenticated=bool(session.get("user")) if config.AUTH_MODE == "oauth" else False,
         user=_public_user(session.get("user")),
         providers=providers,
+        liff_id=config.LIFF_ID if providers["line"] else None,
         execution={
             "enabled": config.EXECUTION_ENABLED,
             "claude": config.CLAUDE_ENABLED,
@@ -173,24 +204,41 @@ def oauth_callback(provider):
                     "nonce": pending["nonce"],
                 },
             )
-            user = {
-                "provider": "line",
-                "subject": profile["sub"],
-                "user_id": f"line:{profile['sub']}",
-                "name": profile.get("name") or "LINE user",
-                "email": profile.get("email"),
-                "picture": profile.get("picture"),
-            }
+            user = _line_user(profile)
         else:
             return jsonify(error="unknown provider"), 404
     except (KeyError, ValueError) as error:
         return jsonify(error=str(error)), 400
-    if not _is_allowed(user):
-        return jsonify(error="this account is not allowed"), 403
-    session.clear()
-    session["user"] = user
-    session.permanent = True
+    denied = _establish_session(user)
+    if denied:
+        return denied
     return redirect("/")
+
+
+@api_auth.post("/auth/liff")
+def liff_login():
+    if (
+        config.AUTH_MODE != "oauth"
+        or not _oauth_providers()["line"]
+        or not config.LIFF_ID
+    ):
+        return jsonify(error="LIFF login is not enabled"), 404
+    body = request.get_json(silent=True) or {}
+    id_token = str(body.get("id_token") or "")
+    if not id_token:
+        return jsonify(error="id_token is required"), 400
+    try:
+        profile = _post_form(
+            "https://api.line.me/oauth2/v2.1/verify",
+            {"id_token": id_token, "client_id": config.LINE_LOGIN_CHANNEL_ID},
+        )
+        user = _line_user(profile)
+    except (KeyError, ValueError) as error:
+        return jsonify(error=str(error)), 400
+    denied = _establish_session(user)
+    if denied:
+        return denied
+    return jsonify(user=_public_user(user))
 
 
 @api_auth.post("/auth/logout")
