@@ -220,6 +220,14 @@ def test_board_approve_responds_and_refreshes(monkeypatch, dashboard):
     monkeypatch.setattr(line_webhook, "_get_dashboard", lambda: dashboard)
     monkeypatch.setattr(
         line_webhook,
+        "_get_board_item",
+        lambda filename: {
+            "title": "3人麻雀設定の修正計画",
+            "related_links": ["https://linear.app/fezzlk/issue/FEZ-126/example"],
+        },
+    )
+    monkeypatch.setattr(
+        line_webhook,
         "_reply_messages",
         lambda reply_token, messages: replies.append((reply_token, messages)),
     )
@@ -234,7 +242,10 @@ def test_board_approve_responds_and_refreshes(monkeypatch, dashboard):
     assert commands == [
         "respond 20260818T050000Z_ab12cd.yaml --decision approval"
     ]
-    assert replies[0][1][0] == {"type": "text", "text": "承認にしました。"}
+    assert replies[0][1][0] == {
+        "type": "text",
+        "text": "承認しました: FEZ-126 — 3人麻雀設定の修正計画",
+    }
     assert replies[0][1][1]["type"] == "flex"
 
 
