@@ -251,7 +251,19 @@ def logout():
 def require_api_authentication():
     if not request.path.startswith("/api/"):
         return None
+    header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    bearer_token = header[len(prefix):] if header.startswith(prefix) else ""
     if config.AUTH_MODE == "oauth":
+        # Scheduled and other machine-to-machine callers cannot establish an
+        # OAuth browser session. Keep the shared token as their credential
+        # while interactive users continue to authenticate with OAuth.
+        if config.SHARED_TOKEN and hmac.compare_digest(
+            bearer_token, config.SHARED_TOKEN
+        ):
+            g.user_id = "shared"
+            g.user = None
+            return None
         user = session.get("user")
         if not user:
             return jsonify(error="authentication required"), 401
@@ -262,10 +274,7 @@ def require_api_authentication():
         return jsonify(error="server authentication mode is invalid"), 500
     if not config.SHARED_TOKEN:
         return jsonify(error="server not configured"), 500
-    header = request.headers.get("Authorization", "")
-    prefix = "Bearer "
-    token = header[len(prefix):] if header.startswith(prefix) else ""
-    if not hmac.compare_digest(token, config.SHARED_TOKEN):
+    if not hmac.compare_digest(bearer_token, config.SHARED_TOKEN):
         return jsonify(error="unauthorized"), 401
     g.user_id = "shared"
     g.user = None
