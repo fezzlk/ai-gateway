@@ -90,19 +90,24 @@ steps:
   - id: "smoke-test"
     name: "gcr.io/cloud-builders/gcloud"
     entrypoint: "bash"
+    secretEnv: ["AI_GATEWAY_SHARED_TOKEN"]
     args:
       - "-c"
       - |
         SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
           --region=${_REGION} --format='value(status.url)')
-        echo "Smoke testing: $${SERVICE_URL}/health"
+        echo "Smoke testing public and authenticated health endpoints"
         for i in 1 2 3 4 5; do
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$${SERVICE_URL}/health")
-          if [ "$$STATUS" = "200" ]; then
-            echo "Health check passed (attempt $$i)"
+          PUBLIC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+            "$${SERVICE_URL}/health")
+          AUTH_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $${AI_GATEWAY_SHARED_TOKEN}" \
+            "$${SERVICE_URL}/api/kobito-health")
+          if [ "$$PUBLIC_STATUS" = "200" ] && [ "$$AUTH_STATUS" = "200" ]; then
+            echo "Public and authenticated health checks passed (attempt $$i)"
             exit 0
           fi
-          echo "Attempt $$i: got $$STATUS, retrying in 5s..."
+          echo "Attempt $$i: public=$$PUBLIC_STATUS authenticated=$$AUTH_STATUS; retrying in 5s..."
           sleep 5
         done
         echo "Smoke test failed after 5 attempts"
@@ -116,3 +121,8 @@ images:
 options:
   logging: CLOUD_LOGGING_ONLY
   substitutionOption: ALLOW_LOOSE
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/AI_GATEWAY_SHARED_TOKEN/versions/latest
+      env: "AI_GATEWAY_SHARED_TOKEN"
