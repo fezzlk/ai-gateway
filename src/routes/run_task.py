@@ -8,6 +8,7 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 import config
 from claude_stream import to_sse_frames
 from ssh_runner import is_valid_repo_name, run_remote_claude, run_remote_command
+from telemetry import traced_claude_run
 
 run_task_blueprint = Blueprint("run_task_blueprint", __name__, url_prefix="/api")
 logger = logging.getLogger(__name__)
@@ -136,28 +137,30 @@ def run_task():
         failure_message = None
         if tracker:
             tracker.start()
-        try:
-            raw_lines = run_remote_claude(prompt, resume_session_id, repo)
-            for line in raw_lines:
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    event = {}
-                if event.get("type") == "gateway_error":
-                    failed = True
-                    failure_message = event.get("message") or "gateway error"
-                yield from to_sse_frames([line])
-        except Exception as error:
-            failed = True
-            failure_message = f"{type(error).__name__}: {error}"
-            raise
-        finally:
-            if tracker:
-                tracker.finish(
-                    "failed" if failed else "completed",
-                    failure_message or "gatewayまたはSSHエラーで終了"
-                    if failed else "Claude Codeセッションが終了",
-                )
+        with traced_claude_run(source, repo) as span:
+            try:
+                raw_lines = run_remote_claude(prompt, resume_session_id, repo)
+                for line in raw_lines:
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        event = {}
+                    if event.get("type") == "gateway_error":
+                        failed = True
+                        failure_message = event.get("message") or "gateway error"
+                    yield from to_sse_frames([line])
+            except Exception as error:
+                failed = True
+                failure_message = f"{type(error).__name__}: {error}"
+                raise
+            finally:
+                span.set_attribute("error", failed)
+                if tracker:
+                    tracker.finish(
+                        "failed" if failed else "completed",
+                        failure_message or "gatewayまたはSSHエラーで終了"
+                        if failed else "Claude Codeセッションが終了",
+                    )
 
     return Response(
         stream_with_context(generate()),
