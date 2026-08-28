@@ -1,54 +1,57 @@
 # ai-gateway
 
-Unified mobile-friendly gateway for routing work between Claude and Codex
-across execution environments (Web/Routines, Mac via Tailscale, GCP VM
-fallback).
+Automation/dispatch gateway that lets `kobito` (an autonomous agent that
+runs on a timer) execute headless Claude Code or Codex sessions on a Mac
+over Tailscale, across execution environments (Mac via Tailscale, GCP VM
+fallback). Humans talk to Claude/Codex through their own official chat
+clients, not through ai-gateway -- see "Agent dispatch model" below.
 
-## Web chat and conversation storage
+## Agent dispatch model
 
-The root page is a responsive chat client with server-side conversation
-history, Markdown/code rendering, code copy, run cancellation, retry, title
-editing, repository selection, and conversation switching/deletion. Claude's
-session ID is stored with each conversation, so switching back to a thread
-continues the corresponding Claude session.
+ai-gateway used to also serve a human-facing web chat with server-side
+conversation history (Firestore-backed). That was removed: per the
+ai-gateway agent boundary decision (pico
+`decisions/2026-08-28_ai-gateway-agent-boundary.md`), humans use Claude's/
+Codex's own official chat clients, and ai-gateway is now a pure automation
+dispatch gateway for `kobito`-style clients. `/` now redirects to
+`/usage.html`, the only remaining human-facing page.
 
-Conversation data is stored in the project's Firestore Standard default
-database. Cloud Run's local filesystem is intentionally not used because it
-is ephemeral. One-time setup (Tokyo region) is:
+`POST /api/run` accepts a JSON body with `prompt` (required), and
+optionally `agent` (`"claude"` or `"codex"`), `repo`, `resume_session_id`,
+and `source`. The agent is resolved once, before anything runs, in this
+priority order:
 
-```bash
-gcloud services enable firestore.googleapis.com --project="$PROJECT_ID"
-gcloud firestore databases create \
-  --database='(default)' \
-  --location=asia-northeast1 \
-  --type=firestore-native \
-  --project="$PROJECT_ID"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role=roles/datastore.user
-```
+1. The request's explicit `agent` field.
+2. `DEFAULT_AGENT` (defaults to `"claude"`, preserving pre-FEZ-143 behavior
+   for callers that omit `agent`).
 
-Do not run the database creation command if a `(default)` database already
-exists. Check first with:
+A third tier -- kobito's own per-task-type agent configuration -- is named
+in the decision record but has no config source in this repo yet, so it's
+currently skipped (deferred follow-up).
 
-```bash
-gcloud firestore databases describe --database='(default)' --project="$PROJECT_ID"
-```
+If the resolved value isn't `claude`/`codex`, or the matching `CLAUDE_ENABLED`/
+`CODEX_ENABLED` flag is off, the request is rejected with `400` before any
+SSH call or human-agent-board run tracking happens. Once an agent is
+chosen for a run, it is fixed for that run: rate limits, executor failures,
+and any other mid-run error are reported as a failed run, never silently
+retried against the other agent. A failed run is retried later as a new
+`/api/run` call with an agent explicitly chosen again (by kobito or a
+human), per the decision record.
 
-Firestore's Standard free quota includes 1 GiB stored data, 50,000 document
-reads/day, and 20,000 writes/day. A personal gateway should normally remain
-within that quota, but billing remains usage-based beyond it. The shared
-gateway bearer token protects all conversation endpoints; this is a single-
-user data model, not per-user tenancy.
+Kobito run tracking (`_KobitoRunTracker` in `routes/run_task.py`) records
+the resolved agent in every human-agent-board call it makes -- folded into
+`run start`'s `--trigger` and `run heartbeat`/`run finish`'s `--summary` as
+a `[agent] ` prefix (board.py has no dedicated structured field for this;
+`--summary` is what LINE/Board actually render for a run) -- and the
+kobito-failure notification body has an explicit `エージェント: <agent>`
+line, so both Board and LINE notifications identify which agent ran.
 
 ### Web authentication modes
 
-Authentication and execution backends are controlled by environment
-variables. `AUTH_MODE=shared_token` preserves the original bearer-token flow.
+The usage dashboard (`/usage.html`) is the only page still gated by these.
+`AUTH_MODE=shared_token` preserves the original bearer-token flow.
 `AUTH_MODE=oauth` enables Google and/or LINE Login; a provider is shown only
-when both its ID and secret are configured. OAuth conversations are stored
-under a one-way hash of the provider's stable subject ID, so users cannot read
-or modify each other's conversations.
+when both its ID and secret are configured.
 
 | Variable | Values / purpose |
 | --- | --- |
@@ -57,9 +60,11 @@ or modify each other's conversations.
 | `AUTHORIZED_GOOGLE_EMAILS` | Comma-separated verified emails for private mode |
 | `AUTHORIZED_LINE_USER_IDS` | Comma-separated LINE Login user IDs for private mode |
 | `LIFF_ID` | LIFF app ID used by `/usage.html`; empty disables LIFF |
-| `EXECUTION_ENABLED` | Global execution kill switch |
-| `CLAUDE_ENABLED` | Enable the currently implemented Claude executor |
-| `CODEX_ENABLED` | Advertise Codex availability (executor not yet implemented) |
+| `EXECUTION_ENABLED` | Global execution kill switch (all agents) |
+| `CLAUDE_ENABLED` | Enable the Claude executor |
+| `CODEX_ENABLED` | Enable the Codex executor. Its exact CLI invocation (`ssh_runner.build_codex_cmdline()`) is a best-effort guess, unverified against a real `codex` install -- verify with `codex exec --help` on the target Mac before enabling this in production |
+| `DEFAULT_AGENT` | Agent used by `/api/run` when the request omits `agent` (default `claude`) |
+| `CODEX_BIN` | Codex CLI binary name/path on the Mac (default `codex`) |
 | `GCP_VM_ENABLED` | Advertise GCP VM availability |
 | `USAGE_PRIVATE_ONLY` | Keep `/api/usage` restricted to allowlisted identities |
 

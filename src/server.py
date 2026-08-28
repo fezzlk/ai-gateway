@@ -4,7 +4,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
@@ -27,14 +27,12 @@ app.config.update(
 )
 
 from auth import api_auth  # noqa: E402
-from routes.conversations import conversations_blueprint  # noqa: E402
 from routes.health import health_blueprint  # noqa: E402
 from routes.line_webhook import line_webhook_blueprint  # noqa: E402
 from routes.run_task import run_task_blueprint  # noqa: E402
 from routes.usage import usage_blueprint  # noqa: E402
 
 app.register_blueprint(api_auth)
-app.register_blueprint(conversations_blueprint)
 app.register_blueprint(health_blueprint)
 app.register_blueprint(run_task_blueprint)
 app.register_blueprint(line_webhook_blueprint)
@@ -43,7 +41,13 @@ app.register_blueprint(usage_blueprint)
 
 @app.route("/")
 def index():
-    return app.send_static_file("index.html")
+    # The human-facing chat UI (server-side conversation history, Firestore
+    # backing) was removed by FEZ-143: ai-gateway is now a pure automation
+    # dispatch gateway for kobito, and humans use Claude's/Codex's own
+    # official chat clients instead (see the ai-gateway agent boundary
+    # decision record). /usage.html (the AI usage dashboard) is the only
+    # remaining human-facing page, so "/" redirects there instead of 404ing.
+    return redirect("/usage.html")
 
 
 if __name__ == "__main__":
