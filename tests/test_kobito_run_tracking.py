@@ -60,8 +60,26 @@ def test_kobito_gateway_error_records_failed(monkeypatch):
     response.get_data()
 
     assert any("finish" in call and "failed" in call for call in calls)
-    assert any("finish" in call and "ssh failed" in call for call in calls)
+    # The failure summary is recorded verbatim as one arg, but it may now
+    # carry a "[agent] " prefix (see _KobitoRunTracker), so check by
+    # substring within the call's args rather than requiring an exact
+    # tuple element match.
+    assert any(
+        "finish" in call and any("ssh failed" in part for part in call)
+        for call in calls
+    )
     assert any("add" in call and "kobito-health" in call for call in calls)
+    # Board/notification identifies which agent ran (FEZ-143 acceptance
+    # criterion): the default agent (claude) must show up somewhere in the
+    # run tracking and failure-notification calls.
+    assert any(
+        "start" in call and any("claude" in part for part in call)
+        for call in calls
+    )
+    assert any(
+        "add" in call and any("エージェント: claude" in part for part in call)
+        for call in calls
+    )
 
 
 def test_kobito_health_opens_deduplicated_action_request(monkeypatch):

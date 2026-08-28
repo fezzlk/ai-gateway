@@ -36,6 +36,15 @@ CODEX_ENABLED = _env_bool("CODEX_ENABLED", False)
 GCP_VM_ENABLED = _env_bool("GCP_VM_ENABLED", False)
 USAGE_PRIVATE_ONLY = _env_bool("USAGE_PRIVATE_ONLY", True)
 
+# Agent resolution for /api/run, per the ai-gateway agent boundary decision
+# record (pico decisions/2026-08-28_ai-gateway-agent-boundary.md): the
+# request's explicit `agent` field wins, then this system default. There is
+# no kobito task-type config source yet, so that middle priority tier
+# (mentioned in the decision record) doesn't exist to consult -- see
+# routes/run_task.py's _resolve_agent(). Defaults to "claude" so existing
+# callers that omit `agent` keep today's behavior unchanged.
+DEFAULT_AGENT = os.environ.get("DEFAULT_AGENT", "claude").strip().lower()
+
 MAC_SSH_HOST = os.environ.get("MAC_SSH_HOST", "")
 MAC_SSH_USER = os.environ.get("MAC_SSH_USER", "")
 MAC_SSH_KNOWN_HOST_LINE = os.environ.get("MAC_SSH_KNOWN_HOST_LINE", "")
@@ -53,6 +62,13 @@ CLAUDE_CODE_OAUTH_TOKEN = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
 GITHUB_PERSONAL_ACCESS_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 CLAUDE_ALLOWED_TOOLS = os.environ.get("CLAUDE_ALLOWED_TOOLS", "Bash,Read,Edit")
 CLAUDE_PERMISSION_MODE = os.environ.get("CLAUDE_PERMISSION_MODE", "")
+
+# Codex CLI binary name/path, mirroring CLAUDE_BIN above. The exact
+# non-interactive/streaming flags used to invoke it (see
+# ssh_runner.build_codex_cmdline()) are a best-effort guess, not verified
+# against a real `codex` install -- see that function's docstring before
+# setting CODEX_ENABLED=true in production.
+CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 
 SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("SSH_CONNECT_TIMEOUT_SECONDS", "15"))
 

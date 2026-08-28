@@ -39,6 +39,28 @@ def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
     return " ".join(parts)
 
 
+def build_codex_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
+    """Best-effort mirror of build_claude_cmdline() for the Codex CLI.
+
+    NOT verified against a real `codex` install -- this repo's environment
+    has no Codex CLI to test against. Modeled on the published shape of
+    `codex exec` (non-interactive, single-shot execution) with `--json` for
+    a streamable NDJSON event log analogous to Claude's
+    `--output-format stream-json`, and a `resume <SESSION_ID>` subcommand
+    analogous to `claude --resume`. Before setting CODEX_ENABLED=true in
+    production, verify these flags against `codex exec --help` on the
+    target Mac and adjust this function accordingly.
+    """
+    parts = [config.CODEX_BIN, "exec"]
+
+    if resume_session_id:
+        parts += ["resume", shlex.quote(resume_session_id)]
+
+    parts += [shlex.quote(prompt), "--json"]
+
+    return " ".join(parts)
+
+
 def _build_ssh_cmd(remote_cmd: str) -> list:
     return [
         "ssh",
@@ -130,13 +152,13 @@ def run_remote_preflight(repo: Optional[str] = None):
     return payload
 
 
-def run_remote_claude(
-    prompt: str,
-    resume_session_id: Optional[str] = None,
-    repo: Optional[str] = None,
-):
-    """Runs `claude -p ...` on the Mac over an IAP-free Tailscale SSH hop,
-    yielding stdout lines as they arrive.
+def _run_remote_agent(remote_cmd: str, repo: Optional[str] = None):
+    """Shared preflight/credential-injection/SSH-streaming plumbing for any
+    agent CLI invocation. `remote_cmd` is an already-built command line (see
+    build_claude_cmdline() / build_codex_cmdline()); every run_remote_*()
+    wrapper below only needs to build its own command line and hand it to
+    this function, so the SSH/preflight/credential mechanics stay in one
+    place regardless of which agent is running.
 
     `tailscale nc` (not a SOCKS/HTTP proxy) is used as the SSH ProxyCommand:
     it tunnels the single TCP connection through the container's userspace
@@ -153,7 +175,7 @@ def run_remote_claude(
         )
         return
 
-    remote_cmd = _with_agent_credentials(build_claude_cmdline(prompt, resume_session_id))
+    remote_cmd = _with_agent_credentials(remote_cmd)
 
     if repo:
         # Not shlex.quote()'d: MAC_REPOS_ROOT defaults to "~/repos", and
@@ -179,3 +201,28 @@ def run_remote_claude(
     process.wait()
     if process.returncode != 0:
         yield f'{{"type":"gateway_error","message":"ssh exited with code {process.returncode}"}}'
+
+
+def run_remote_claude(
+    prompt: str,
+    resume_session_id: Optional[str] = None,
+    repo: Optional[str] = None,
+):
+    """Runs `claude -p ...` on the Mac over an IAP-free Tailscale SSH hop,
+    yielding stdout lines as they arrive. See _run_remote_agent() for the
+    shared preflight/credential/SSH mechanics.
+    """
+    yield from _run_remote_agent(build_claude_cmdline(prompt, resume_session_id), repo)
+
+
+def run_remote_codex(
+    prompt: str,
+    resume_session_id: Optional[str] = None,
+    repo: Optional[str] = None,
+):
+    """Runs `codex exec ...` on the Mac over the same Tailscale SSH hop as
+    run_remote_claude(). See build_codex_cmdline() for the CLI-flag caveat
+    (unverified against a real Codex CLI install) and _run_remote_agent()
+    for the shared preflight/credential/SSH mechanics.
+    """
+    yield from _run_remote_agent(build_codex_cmdline(prompt, resume_session_id), repo)

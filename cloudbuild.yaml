@@ -30,11 +30,19 @@ substitutions:
   _CODEX_ENABLED: "false"
   _GCP_VM_ENABLED: "false"
   _USAGE_PRIVATE_ONLY: "true"
+  # Agent /api/run picks when a request omits `agent` (FEZ-143). Keep at
+  # "claude" for backward compatibility with existing kobito callers.
+  _DEFAULT_AGENT: "claude"
   # Absolute path to `claude` on the Mac. Non-interactive SSH commands only
   # source ~/.zshenv (not ~/.zshrc), so a PATH built by .zshrc — e.g. via
   # nvm or a user-local bin dir — won't be visible; an absolute path sidesteps
   # that instead of requiring shell-config changes on the Mac.
   _CLAUDE_BIN: "claude"
+  # Same treatment for the Codex CLI. Its exact non-interactive invocation
+  # is unverified in this repo (see ssh_runner.build_codex_cmdline()) --
+  # don't flip _CODEX_ENABLED to "true" without confirming it against a
+  # real `codex exec --help` on the target Mac first.
+  _CODEX_BIN: "codex"
   # Tools Claude may run without an interactive approval prompt (there is
   # none over non-interactive SSH). Adjust the mcp__*__* entries to match
   # whichever MCP servers are configured on your own Mac.
@@ -83,7 +91,7 @@ steps:
       # comma-separated), which collides with --set-env-vars' default
       # delimiter, so the delimiter is switched to "@" (gcloud's
       # "^delim^..." syntax) for this flag.
-      - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}@LINE_AUTHORIZED_USER_ID=${_LINE_AUTHORIZED_USER_ID}@LINEAR_WRITE_ALLOWED=${_LINEAR_WRITE_ALLOWED}@AUTH_MODE=${_AUTH_MODE}@ACCESS_MODE=${_ACCESS_MODE}@GOOGLE_OAUTH_CLIENT_ID=${_GOOGLE_OAUTH_CLIENT_ID}@LINE_LOGIN_CHANNEL_ID=${_LINE_LOGIN_CHANNEL_ID}@LIFF_ID=${_LIFF_ID}@AUTHORIZED_GOOGLE_EMAILS=${_AUTHORIZED_GOOGLE_EMAILS}@AUTHORIZED_LINE_USER_IDS=${_AUTHORIZED_LINE_USER_IDS}@EXECUTION_ENABLED=${_EXECUTION_ENABLED}@CLAUDE_ENABLED=${_CLAUDE_ENABLED}@CODEX_ENABLED=${_CODEX_ENABLED}@GCP_VM_ENABLED=${_GCP_VM_ENABLED}@USAGE_PRIVATE_ONLY=${_USAGE_PRIVATE_ONLY}"
+      - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CODEX_BIN=${_CODEX_BIN}@DEFAULT_AGENT=${_DEFAULT_AGENT}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}@LINE_AUTHORIZED_USER_ID=${_LINE_AUTHORIZED_USER_ID}@LINEAR_WRITE_ALLOWED=${_LINEAR_WRITE_ALLOWED}@AUTH_MODE=${_AUTH_MODE}@ACCESS_MODE=${_ACCESS_MODE}@GOOGLE_OAUTH_CLIENT_ID=${_GOOGLE_OAUTH_CLIENT_ID}@LINE_LOGIN_CHANNEL_ID=${_LINE_LOGIN_CHANNEL_ID}@LIFF_ID=${_LIFF_ID}@AUTHORIZED_GOOGLE_EMAILS=${_AUTHORIZED_GOOGLE_EMAILS}@AUTHORIZED_LINE_USER_IDS=${_AUTHORIZED_LINE_USER_IDS}@EXECUTION_ENABLED=${_EXECUTION_ENABLED}@CLAUDE_ENABLED=${_CLAUDE_ENABLED}@CODEX_ENABLED=${_CODEX_ENABLED}@GCP_VM_ENABLED=${_GCP_VM_ENABLED}@USAGE_PRIVATE_ONLY=${_USAGE_PRIVATE_ONLY}"
       - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,SESSION_SECRET=SESSION_SECRET:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,LINE_LOGIN_CHANNEL_SECRET=LINE_LOGIN_CHANNEL_SECRET:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,LINE_CHANNEL_ACCESS_TOKEN=LINE_CHANNEL_ACCESS_TOKEN:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest"
     waitFor: ["push"]
 
