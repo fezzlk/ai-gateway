@@ -1,16 +1,31 @@
 # ai-gateway
 
-Unified mobile-friendly gateway for routing work between Claude and Codex
-across execution environments (Web/Routines, Mac via Tailscale, GCP VM
-fallback).
+Execution and operations gateway for automated Claude and Codex tasks. Human
+users chat with each agent through its official interface and choose the agent
+explicitly. ai-gateway provides headless task dispatch, execution-environment
+routing, connectivity checks, usage visibility, and Board/LINE monitoring.
 
-## Web chat and conversation storage
+## Agent boundary
 
-The root page is a responsive chat client with server-side conversation
-history, Markdown/code rendering, code copy, run cancellation, retry, title
-editing, repository selection, and conversation switching/deletion. Claude's
-session ID is stored with each conversation, so switching back to a thread
-continues the corresponding Claude session.
+ai-gateway does not aim to replace or merge the official Claude and Codex chat
+experiences. Human-facing chat and server-side conversation storage are being
+retired. Cross-agent continuity belongs in Git commits and branches, Linear
+issues, and explicit handoff records.
+
+Automated clients such as kobito still need agent selection. A task chooses
+`claude` or `codex` when it starts, and that choice remains fixed for the whole
+run. Rate limits and executor failures are reported as failures; ai-gateway
+does not switch agents inside a running task. Usage information is an input to
+the caller's pre-run decision, not an automatic routing signal.
+
+Mac-to-GCP-VM fallback remains valid because it changes the execution
+environment without changing the selected agent.
+
+## Legacy web chat and conversation storage
+
+The current deployment still contains a responsive chat client and Firestore
+conversation history. These components are legacy and remain documented here
+until their removal is implemented. Do not build new workflows on them.
 
 Conversation data is stored in the project's Firestore Standard default
 database. Cloud Run's local filesystem is intentionally not used because it
@@ -110,7 +125,7 @@ LINE_CHANNEL_ACCESS_TOKEN=... python3 scripts/setup_line_rich_menu.py assets/lin
 
 ### kobito実行監視
 
-`/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoardとLINEへ送る。正常終了時にその障害項目を自動解消する。
+`/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。今後は開始要求の`agent: "claude" | "codex"`を実行中固定し、失敗時も同一run内で他方へ自動切り替えしない。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoardとLINEへ送る。正常終了時にその障害項目を自動解消する。
 
 `POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。
 
