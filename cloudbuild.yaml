@@ -38,7 +38,8 @@ substitutions:
   # Tools Claude may run without an interactive approval prompt (there is
   # none over non-interactive SSH). Adjust the mcp__*__* entries to match
   # whichever MCP servers are configured on your own Mac.
-  _CLAUDE_ALLOWED_TOOLS: "Bash,Read,Edit,mcp__linear__*,mcp__github__*,mcp__github-actions__*"
+  # Write is separate from Edit and must be allowed for new file creation.
+  _CLAUDE_ALLOWED_TOOLS: "Bash,Read,Write,Edit,mcp__linear__*,mcp__github__*,mcp__github-actions__*"
 
 steps:
   - id: "build"
