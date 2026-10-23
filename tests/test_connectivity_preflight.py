@@ -1,12 +1,47 @@
 import json
+import re
+import runpy
+import shlex
 import sys
 from pathlib import Path
+
+import pytest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import config  # noqa: E402
 import ssh_runner  # noqa: E402
+
+
+@pytest.mark.parametrize("settings_source", ["local", "cloudbuild"])
+def test_headless_file_tools_are_preapproved(monkeypatch, settings_source):
+    root = Path(__file__).resolve().parent.parent
+    monkeypatch.delenv("CLAUDE_ALLOWED_TOOLS", raising=False)
+    if settings_source == "local":
+        allowed_tools = runpy.run_path(str(root / "src" / "config.py"))[
+            "CLAUDE_ALLOWED_TOOLS"
+        ]
+    else:
+        match = re.search(
+            r'^  _CLAUDE_ALLOWED_TOOLS: "([^"]+)"$',
+            (root / "cloudbuild.yaml").read_text(),
+            re.MULTILINE,
+        )
+        assert match, "Cloud Build must configure the headless tool allowlist"
+        allowed_tools = match.group(1)
+    monkeypatch.setattr(config, "CLAUDE_ALLOWED_TOOLS", allowed_tools)
+    command = shlex.split(ssh_runner.build_claude_cmdline("Create and edit a file", None))
+    approved = set(command[command.index("--allowedTools") + 1].split(","))
+    assert {"Read", "Write", "Edit"} <= approved
+
+
+def test_headless_file_tools_respect_operator_override(monkeypatch):
+    monkeypatch.setenv("CLAUDE_ALLOWED_TOOLS", "Read")
+    settings = runpy.run_path(str(Path(config.__file__)))
+    monkeypatch.setattr(config, "CLAUDE_ALLOWED_TOOLS", settings["CLAUDE_ALLOWED_TOOLS"])
+    command = shlex.split(ssh_runner.build_claude_cmdline("Read only", None))
+    assert command[command.index("--allowedTools") + 1] == "Read"
 
 
 def test_remote_preflight_parses_json(monkeypatch):

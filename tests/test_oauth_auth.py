@@ -13,6 +13,7 @@ import config  # noqa: E402
 @pytest.fixture
 def app(monkeypatch):
     monkeypatch.setattr(config, "AUTH_MODE", "oauth")
+    monkeypatch.setattr(config, "SHARED_TOKEN", "scheduler-secret")
     monkeypatch.setattr(config, "ACCESS_MODE", "authenticated")
     monkeypatch.setattr(config, "SESSION_SECRET", "test-secret")
     monkeypatch.setattr(config, "GOOGLE_OAUTH_CLIENT_ID", "google-id")
@@ -34,6 +35,21 @@ def app(monkeypatch):
 
 def test_oauth_api_requires_session(app):
     assert app.test_client().get("/api/whoami").status_code == 401
+
+
+def test_oauth_api_accepts_shared_token_for_machine_callers(app):
+    response = app.test_client().get(
+        "/api/whoami", headers={"Authorization": "Bearer scheduler-secret"}
+    )
+    assert response.status_code == 200
+    assert response.get_json()["user_id"] == "shared"
+
+
+def test_oauth_api_rejects_invalid_shared_token_without_session(app):
+    response = app.test_client().get(
+        "/api/whoami", headers={"Authorization": "Bearer wrong-secret"}
+    )
+    assert response.status_code == 401
 
 
 def test_auth_session_lists_configured_providers(app):
