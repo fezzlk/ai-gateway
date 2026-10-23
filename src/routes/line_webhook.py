@@ -93,6 +93,30 @@ def _get_dashboard():
     return json.loads(output)
 
 
+def _get_board_item(filename):
+    quoted_filename = shlex.quote(filename)
+    returncode, output = _run_board_command(f"get {quoted_filename} --json")
+    if returncode != 0:
+        raise RuntimeError(output.strip() or "board item lookup failed")
+    return json.loads(output)
+
+
+def _decision_target(item):
+    identifier = None
+    for url in item.get("related_links") or []:
+        match = re.search(r"/issue/([A-Za-z]+-\d+)(?:/|$)", url)
+        if match:
+            identifier = match.group(1).upper()
+            break
+    title = (item.get("title") or "対象不明").strip()
+    return f"{identifier} — {title}" if identifier else title
+
+
+def _issue_identifier_from_url(url):
+    match = re.search(r"/issue/([A-Za-z]+-\d+)(?:/|$)", url)
+    return match.group(1).upper() if match else None
+
+
 def _get_usage_dashboard(hours=168):
     returncode, output = _run_board_command(f"usage dashboard --hours {int(hours)}")
     if returncode != 0:
@@ -462,12 +486,14 @@ def _handle_postback(event: dict) -> None:
         logger.warning("ignoring malformed postback data: %r", data)
         return
 
+    identifier = _issue_identifier_from_url(related_link)
+    target_suffix = f": {identifier}" if identifier else ""
     remote_cmd = (
         "python3 ~/repos/human-agent-board/board.py add "
         "--direction user-to-agent --from user --type "
         f"{shlex.quote(item_type)} "
-        f"--title {shlex.quote(f'{_LABEL_BY_ACTION[action]} (LINE経由)')} "
-        f"--body {shlex.quote(f'LINE Botから{_LABEL_BY_ACTION[action]}されました。')} "
+        f"--title {shlex.quote(f'{_LABEL_BY_ACTION[action]} (LINE経由){target_suffix}')} "
+        f"--body {shlex.quote(f'LINE Botから{_LABEL_BY_ACTION[action]}されました。対象: {identifier or related_link}')} "
         f"--related-link {shlex.quote(related_link)}"
     )
 
@@ -483,7 +509,8 @@ def _handle_postback(event: dict) -> None:
         _reply(reply_token, f"エラー: 記録に失敗しました\n{output}".strip()[:2000])
         return
 
-    _reply(reply_token, f"{_LABEL_BY_ACTION[action]}を記録しました。")
+    target_text = f": {identifier}" if identifier else ""
+    _reply(reply_token, f"{_LABEL_BY_ACTION[action]}を記録しました{target_text}。")
 
 
 def _handle_board_postback(event: dict, data: str) -> None:
@@ -515,6 +542,8 @@ def _handle_board_postback(event: dict, data: str) -> None:
 
         quoted_filename = shlex.quote(filename)
         if action in {"approve", "reject"}:
+            item = _get_board_item(filename)
+            target = _decision_target(item)
             decision = "approval" if action == "approve" else "rejection"
             returncode, output = _run_board_command(
                 f"respond {quoted_filename} --decision {decision}"
@@ -530,7 +559,7 @@ def _handle_board_postback(event: dict, data: str) -> None:
         _reply_messages(
             reply_token,
             [
-                {"type": "text", "text": f"{label}にしました。"},
+                {"type": "text", "text": f"{label}しました: {target}"},
                 _dashboard_flex(dashboard),
             ],
         )
