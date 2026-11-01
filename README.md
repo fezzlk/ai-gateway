@@ -1,45 +1,11 @@
 # ai-gateway
 
-Unified mobile-friendly gateway for routing work between Claude and Codex
-across execution environments (Web/Routines, Mac via Tailscale, GCP VM
-fallback).
+Headless execution gateway that lets kobito and other automation clients run
+Claude on the Mac over Tailscale SSH, with run monitoring and usage reporting.
 
-## Web chat and conversation storage
+## kobito実行の中継
 
-The root page is a responsive chat client with server-side conversation
-history, Markdown/code rendering, code copy, run cancellation, retry, title
-editing, repository selection, and conversation switching/deletion. Claude's
-session ID is stored with each conversation, so switching back to a thread
-continues the corresponding Claude session.
-
-Conversation data is stored in the project's Firestore Standard default
-database. Cloud Run's local filesystem is intentionally not used because it
-is ephemeral. One-time setup (Tokyo region) is:
-
-```bash
-gcloud services enable firestore.googleapis.com --project="$PROJECT_ID"
-gcloud firestore databases create \
-  --database='(default)' \
-  --location=asia-northeast1 \
-  --type=firestore-native \
-  --project="$PROJECT_ID"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:ai-gateway-run@$PROJECT_ID.iam.gserviceaccount.com" \
-  --role=roles/datastore.user
-```
-
-Do not run the database creation command if a `(default)` database already
-exists. Check first with:
-
-```bash
-gcloud firestore databases describe --database='(default)' --project="$PROJECT_ID"
-```
-
-Firestore's Standard free quota includes 1 GiB stored data, 50,000 document
-reads/day, and 20,000 writes/day. A personal gateway should normally remain
-within that quota, but billing remains usage-based beyond it. The shared
-gateway bearer token protects all conversation endpoints; this is a single-
-user data model, not per-user tenancy.
+人間向けのWebチャットと会話の保存は2026-11-01に撤去した（FEZ-266）。人間はClaude/Codexそれぞれの公式アプリを使う。Macのローカル環境をスマホから使う場合はClaude Remote Controlを使う。
 
 ### Project別kobitoの実行（opt-in）
 
@@ -57,9 +23,7 @@ Slackの即時会話は`source: "kobito-slack"`で、Project・repo・`conversat
 Authentication and execution backends are controlled by environment
 variables. `AUTH_MODE=shared_token` preserves the original bearer-token flow.
 `AUTH_MODE=oauth` enables Google and/or LINE Login; a provider is shown only
-when both its ID and secret are configured. OAuth conversations are stored
-under a one-way hash of the provider's stable subject ID, so users cannot read
-or modify each other's conversations.
+when both its ID and secret are configured.
 
 | Variable | Values / purpose |
 | --- | --- |
@@ -71,7 +35,6 @@ or modify each other's conversations.
 | `EXECUTION_ENABLED` | Global execution kill switch |
 | `CLAUDE_ENABLED` | Enable the currently implemented Claude executor |
 | `CODEX_ENABLED` | Advertise Codex availability (executor not yet implemented) |
-| `GCP_VM_ENABLED` | Advertise GCP VM availability |
 | `USAGE_PRIVATE_ONLY` | Keep `/api/usage` restricted to allowlisted identities |
 
 OAuth secrets belong in Secret Manager (`SESSION_SECRET`,
@@ -92,13 +55,9 @@ LINE Login uses OpenID Connect with server-side ID-token verification. Both
 flows validate `state` and `nonce`; the resulting application session is kept
 in a Secure, HttpOnly, SameSite=Lax signed cookie for 30 days.
 
-## Execution environment priority
+## Execution environment
 
-1. Claude Web/Routines or Codex Cloud (no PC required, MCP limited to
-   connectors)
-2. Mac over Tailscale (full local MCP setup, requires the Mac to be
-   reachable)
-3. GCP VM fallback (used only when the Mac isn't reachable)
+kobitoの実行はMac（Tailscale経由のSSH）だけで行う。Macが止まっている間の代わりの実行環境（GCP VMフォールバック）は、2026-11-01に不要と判断して撤去した（FEZ-266）。
 
 ## LINEでBoardを確認・管理する
 
@@ -126,84 +85,3 @@ LINE_CHANNEL_ACCESS_TOKEN=... python3 scripts/setup_line_rich_menu.py assets/lin
 `POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。
 
 監視ジョブを追加する場合も既存の`ai-gateway`・単一リージョンを利用し、Cloud Runのmin instancesやCPU設定は変更しない。
-
-## GCP VM fallback: ephemeral by design
-
-The fallback environment is **not** a persistent, always-on VM. Keeping an
-idle instance around costs money even when stopped (the boot disk alone is
-billed 24/7), so instead each fallback session:
-
-1. Creates a brand-new VM (`infra/spin-up-fallback-vm.sh`)
-2. Installs tools and clones only the repo needed for that task
-   (`infra/startup-tools.sh`, run automatically as the instance's
-   startup-script)
-3. Gets used over SSH (via GCP IAP; the instance does have a normal
-   ephemeral external IP so the startup-script can reach the public
-   internet for tool installation — see note below)
-4. Gets deleted (`infra/teardown-fallback-vm.sh`) as soon as the task is done
-
-No custom image or standing disk is kept between sessions. This trades a
-few minutes of tool-install time per session for effectively zero cost
-when the fallback isn't in use.
-
-### One-time project setup
-
-Requires a GCP project with billing enabled, the Compute Engine API
-enabled, and a firewall rule allowing SSH only from the IAP range
-(`35.235.240.0/20`, tcp:22) — no other inbound access, regardless of the
-instance having a public IP.
-
-**Important — delete the auto-created default firewall rules.** Every new
-GCP project's `default` VPC comes with `default-allow-ssh` (tcp:22 from
-`0.0.0.0/0`, i.e. the whole internet) and `default-allow-rdp` already
-present. These are *additional* ALLOW rules, not overridden by a
-narrower one — so leaving them in place means the instance is reachable
-from the entire internet on port 22 regardless of the IAP-only rule
-above (found by actually checking `gcloud compute firewall-rules list`
-after standing this up — it looked IAP-only until this was checked).
-Delete both once per project:
-```bash
-gcloud compute firewall-rules delete default-allow-ssh default-allow-rdp --project=$PROJECT_ID
-```
-
-**Why the instance has an external IP:** with no external IP and no NAT
-gateway, the instance has zero route to the public internet, so the
-startup-script's apt/GitHub/npm installs fail outright (confirmed by
-testing). Adding a Cloud NAT gateway would fix that, but Cloud NAT bills
-a flat ~$32/month for the gateway itself regardless of usage — the
-opposite of what an ephemeral, pay-only-when-used VM is for. A normal
-*ephemeral* (not reserved/static) external IP is free while the instance
-is running, so that's what's used instead. This doesn't reopen the
-instance to inbound traffic: the firewall rule still only allows SSH from
-the IAP range, on any IP the instance happens to have.
-
-### Usage
-
-```bash
-export PROJECT_ID=your-project-id
-
-./infra/spin-up-fallback-vm.sh
-# ... wait a few minutes for startup-script to finish, then:
-gcloud compute ssh <instance-name> --project=$PROJECT_ID --zone=asia-northeast1-a --tunnel-through-iap
-
-# On first login, authenticate and clone what you need interactively —
-# credentials are never baked into the image or instance metadata, and
-# repos aren't cloned automatically since they're private:
-gh auth login
-git clone https://github.com/you/your-repo.git /opt/work/your-repo
-claude  # follow login prompt
-codex   # follow login prompt
-
-# When done:
-INSTANCE_NAME=<instance-name> ./infra/teardown-fallback-vm.sh
-```
-
-両スクリプトの実行結果は、隣接する`human-agent-board`リポジトリの`board/vm/events.jsonl`へ自動記録される。LINE BotのBoard画面にある「VM履歴」ボタン、または`VM履歴`メッセージから確認できる。`BOARD_CLI`を指定すれば別の`board.py`を利用できる。記録処理の失敗はVM操作自体の終了コードを変更しない。GCP Consoleや直接実行した`gcloud`は記録対象外。
-
-### Why no credentials in the startup-script
-
-Instance metadata (including startup-script contents) can be read in
-plaintext by anyone with `describe` access to the instance
-(`gcloud compute instances describe`). Auth tokens and API keys are
-therefore never embedded there — they're entered interactively after SSH,
-each session.

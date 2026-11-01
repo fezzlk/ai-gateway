@@ -33,7 +33,6 @@ def _env_bool(name, default=True):
 EXECUTION_ENABLED = _env_bool("EXECUTION_ENABLED", True)
 CLAUDE_ENABLED = _env_bool("CLAUDE_ENABLED", True)
 CODEX_ENABLED = _env_bool("CODEX_ENABLED", False)
-GCP_VM_ENABLED = _env_bool("GCP_VM_ENABLED", False)
 USAGE_PRIVATE_ONLY = _env_bool("USAGE_PRIVATE_ONLY", True)
 
 MAC_SSH_HOST = os.environ.get("MAC_SSH_HOST", "")
