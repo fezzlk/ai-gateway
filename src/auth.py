@@ -122,7 +122,6 @@ def auth_session():
             "enabled": config.EXECUTION_ENABLED,
             "claude": config.CLAUDE_ENABLED,
             "codex": config.CODEX_ENABLED,
-            "gcp_vm": config.GCP_VM_ENABLED,
         },
     )
 
