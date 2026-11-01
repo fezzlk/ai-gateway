@@ -72,6 +72,10 @@ HUMAN_AGENT_BOARD_CLI = os.environ.get(
     "HUMAN_AGENT_BOARD_CLI", "~/repos/human-agent-board/board.py"
 )
 KOBITO_HEARTBEAT_SECONDS = int(os.environ.get("KOBITO_HEARTBEAT_SECONDS", "60"))
+KOBITO_PROJECT_DISPATCH_ENABLED = _env_bool("KOBITO_PROJECT_DISPATCH_ENABLED", False)
+KOBITO_PROJECT_RUNNER = os.environ.get(
+    "KOBITO_PROJECT_RUNNER", "~/repos/kobito/scripts/project_slack.py"
+)
 
 # LINE Messaging API channel used for human-agent-board's /line/webhook route
 # (see routes/line_webhook.py). LINE_CHANNEL_ACCESS_TOKEN here is only used

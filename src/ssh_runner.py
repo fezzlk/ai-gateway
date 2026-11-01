@@ -16,7 +16,21 @@ def is_valid_repo_name(repo: str) -> bool:
     return bool(_REPO_NAME_RE.match(repo))
 
 
-def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
+def is_valid_project_id(project_id: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", project_id))
+
+
+def _remote_path(path):
+    return '"$HOME"/' + shlex.quote(path[2:]) if path.startswith("~/") else shlex.quote(path)
+
+
+def select_kobito_project():
+    return run_remote_command(
+        f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} next-project", timeout=15
+    )
+
+
+def build_claude_cmdline(prompt: str, resume_session_id: Optional[str], execution_mode=None) -> str:
     parts = [
         config.CLAUDE_BIN,
         "-p",
@@ -27,10 +41,19 @@ def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
         "--include-partial-messages",
     ]
 
-    if config.CLAUDE_ALLOWED_TOOLS:
+    if execution_mode == "conversation":
+        # Conversations may inspect the assigned repository, but cannot turn a
+        # Slack request into an implementation or invoke an installed MCP writer.
+        parts += [
+            "--restricted", "--tools", "Read,Glob,Grep", "--strict-mcp-config", "--mcp-config",
+            shlex.quote('{"mcpServers":{}}'), "--disable-slash-commands",
+            "--permission-mode", "plan", "--settings",
+            shlex.quote('{"disableAllHooks":true}'),
+        ]
+    elif config.CLAUDE_ALLOWED_TOOLS:
         parts += ["--allowedTools", shlex.quote(config.CLAUDE_ALLOWED_TOOLS)]
 
-    if config.CLAUDE_PERMISSION_MODE:
+    if execution_mode != "conversation" and config.CLAUDE_PERMISSION_MODE:
         parts += ["--permission-mode", shlex.quote(config.CLAUDE_PERMISSION_MODE)]
 
     if resume_session_id:
@@ -134,6 +157,8 @@ def run_remote_claude(
     prompt: str,
     resume_session_id: Optional[str] = None,
     repo: Optional[str] = None,
+    project_id: Optional[str] = None,
+    execution_mode: Optional[str] = None,
 ):
     """Runs `claude -p ...` on the Mac over an IAP-free Tailscale SSH hop,
     yielding stdout lines as they arrive.
@@ -142,6 +167,12 @@ def run_remote_claude(
     it tunnels the single TCP connection through the container's userspace
     tailscaled with no extra client-side proxy plumbing needed.
     """
+    if project_id and (not is_valid_project_id(project_id) or not repo):
+        raise ValueError("project-scoped execution requires a valid project ID and repo")
+    if execution_mode not in (None, "conversation", "work"):
+        raise ValueError("invalid execution mode")
+    if execution_mode == "conversation" and not project_id:
+        raise ValueError("conversation execution requires a project")
     preflight = run_remote_preflight(repo)
     yield json.dumps({"type": "connectivity_preflight", **preflight})
     if preflight.get("overall") == "BLOCKED":
@@ -153,9 +184,16 @@ def run_remote_claude(
         )
         return
 
-    remote_cmd = _with_agent_credentials(build_claude_cmdline(prompt, resume_session_id))
+    command = build_claude_cmdline(prompt, resume_session_id, execution_mode)
+    if project_id:
+        command = (
+            f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} exec "
+            f"--project-id {shlex.quote(project_id)} --repo {shlex.quote(repo)} "
+            f"--mode {execution_mode or 'work'} -- {command}"
+        )
+    remote_cmd = _with_agent_credentials(command)
 
-    if repo:
+    if repo and not project_id:
         # Not shlex.quote()'d: MAC_REPOS_ROOT defaults to "~/repos", and
         # quoting would stop the shell from tilde-expanding it. This is
         # still safe because `repo` is only reached here after
