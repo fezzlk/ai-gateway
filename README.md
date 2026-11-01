@@ -41,7 +41,18 @@ within that quota, but billing remains usage-based beyond it. The shared
 gateway bearer token protects all conversation endpoints; this is a single-
 user data model, not per-user tenancy.
 
-### Web authentication modes
+### Project別kobitoの実行（opt-in）
+
+`POST /api/run`は`project_id`・`repo`・`execution_mode`（`conversation`または`work`）を受け取れる。指定したProjectとrepoの対応、稼働設定はMacのkobito側`project_slack.py exec`が私有設定で検証し、異なるrepoへの実行を拒否する。
+
+Slackの即時会話は`source: "kobito-slack"`で、Project・repo・`conversation`モードの指定を必須とする。Claudeには`--restricted`、Read/Glob/Grepだけのツール、空のstrict MCP設定、hooks無効、plan permission modeを適用する。会話により編集権限を増やさず、Schedulerの稼働記録にも混ぜない。
+
+`KOBITO_PROJECT_DISPATCH_ENABLED`（既定false）がtrueの場合、従来のkobito定期実行で登録Projectを順番に選ぶ。`KOBITO_PROJECT_RUNNER`はMac側のrunnerパス（既定`~/repos/kobito/scripts/project_slack.py`）。選択に失敗したり稼働Projectがない場合は、従来の全Project横断実行へ戻らず終了する。新しいSchedulerやクラウドサービスを追加しない。秘密情報とProject・channel対応表はMac側で管理し、コンテナイメージへ含めない。
+
+この機能はhuman-agent-boardのProject対応とkobitoのSlack受付実装を先に反映してから有効にする。導入・本人照合・置き手紙・承認の検証はkobitoの`SLACK_SETUP.md`を参照する。
+既存の`cloudbuild.yaml`も`_KOBITO_PROJECT_DISPATCH_ENABLED: "false"`を既定とする。稼働を切り替える際は既存トリガーの同名substitutionで指定し、別のトリガーやSchedulerを作らない。
+
+### Web authentication configuration
 
 Authentication and execution backends are controlled by environment
 variables. `AUTH_MODE=shared_token` preserves the original bearer-token flow.

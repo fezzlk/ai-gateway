@@ -1,13 +1,17 @@
 import json
 import logging
 import shlex
+import subprocess
 import threading
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 import config
 from claude_stream import to_sse_frames
-from ssh_runner import is_valid_repo_name, run_remote_claude, run_remote_command
+from ssh_runner import (
+    is_valid_repo_name, is_valid_project_id, run_remote_claude,
+    run_remote_command, select_kobito_project,
+)
 from telemetry import traced_claude_run
 
 run_task_blueprint = Blueprint("run_task_blueprint", __name__, url_prefix="/api")
@@ -15,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 
 def _is_kobito_run(prompt, source):
+    if source == "kobito-slack":
+        return False
     return source == "kobito" or "kobito/OPERATING.md" in prompt
 
 
@@ -124,9 +130,44 @@ def run_task():
     resume_session_id = body.get("resume_session_id") or None
     repo = (body.get("repo") or "").strip() or None
     source = (body.get("source") or "").strip() or None
+    project_id = body.get("project_id")
+    execution_mode = body.get("execution_mode")
 
     if not prompt:
         return {"error": "prompt is required"}, 400
+
+    if project_id is not None and (
+        not isinstance(project_id, str) or not is_valid_project_id(project_id)
+    ):
+        return {"error": "invalid project ID"}, 400
+    if execution_mode not in (None, "conversation", "work"):
+        return {"error": "invalid execution mode"}, 400
+    if source == "kobito-slack":
+        if not project_id or not repo or execution_mode != "conversation":
+            return {"error": "Slack conversations require project, repo and conversation mode"}, 400
+    if execution_mode == "conversation" and not project_id:
+        return {"error": "conversation mode requires project ID"}, 400
+
+    if _is_kobito_run(prompt, source) and config.KOBITO_PROJECT_DISPATCH_ENABLED and not project_id:
+        try:
+            code, output = select_kobito_project()
+            if code:
+                raise ValueError("project selection failed")
+            selected = json.loads(output)
+            if selected is None:
+                return Response(
+                    'event: result\ndata: {"type":"result","result":"No enabled project work"}\n\n',
+                    mimetype="text/event-stream",
+                )
+            project_id, repo = selected["id"], selected["repo"]
+            if not is_valid_project_id(project_id) or not is_valid_repo_name(repo):
+                raise ValueError("invalid selected project")
+            execution_mode = "work"
+        except (ValueError, TypeError, KeyError, OSError, subprocess.TimeoutExpired):
+            return {"error": "project selection unavailable; no work started"}, 503
+
+    if project_id and not repo:
+        return {"error": "project-scoped execution requires repo"}, 400
 
     if repo and not is_valid_repo_name(repo):
         return {"error": "invalid repo name"}, 400
@@ -139,7 +180,13 @@ def run_task():
             tracker.start()
         with traced_claude_run(source, repo) as span:
             try:
-                raw_lines = run_remote_claude(prompt, resume_session_id, repo)
+                if project_id:
+                    raw_lines = run_remote_claude(
+                        prompt, resume_session_id, repo,
+                        project_id=project_id, execution_mode=execution_mode,
+                    )
+                else:
+                    raw_lines = run_remote_claude(prompt, resume_session_id, repo)
                 for line in raw_lines:
                     try:
                         event = json.loads(line)
