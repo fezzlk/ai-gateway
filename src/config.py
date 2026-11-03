@@ -70,6 +70,10 @@ CONNECTIVITY_PREFLIGHT_TIMEOUT_SECONDS = int(
 HUMAN_AGENT_BOARD_CLI = os.environ.get(
     "HUMAN_AGENT_BOARD_CLI", "~/repos/human-agent-board/board.py"
 )
+# kobito-health alerts are sent as a Slack DM straight from this service so
+# they arrive even when the Mac (and its Slack listener) is down (FEZ-282).
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+SLACK_ALERT_USER_ID = os.environ.get("SLACK_ALERT_USER_ID", "")
 KOBITO_HEARTBEAT_SECONDS = int(os.environ.get("KOBITO_HEARTBEAT_SECONDS", "60"))
 KOBITO_PROJECT_DISPATCH_ENABLED = _env_bool("KOBITO_PROJECT_DISPATCH_ENABLED", False)
 KOBITO_PROJECT_RUNNER = os.environ.get(
