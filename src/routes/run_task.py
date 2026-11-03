@@ -51,7 +51,7 @@ def kobito_health():
             "--body",
             f"稼働状態は{state}、最終確認は{health.get('last_seen_at') or 'なし'}、"
             f"連続失敗は{health.get('consecutive_failures', 0)}回です。"
-            "LINEのkobito状況で直近エラーと対処方法を確認してください。",
+            "Slackの#p-kobitoと、Macの受付ログで直近エラーと対処方法を確認してください。",
         )
     elif state in ("healthy", "running"):
         _board_command(
