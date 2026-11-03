@@ -58,7 +58,7 @@ def test_run_task_emits_span_marked_failed_on_gateway_error(monkeypatch):
     app = Flask(__name__)
     app.register_blueprint(run_task.run_task_blueprint)
     monkeypatch.setattr(
-        run_task, "run_remote_claude",
+        run_task, "run_remote_agent",
         lambda *args, **kwargs: iter(
             [json.dumps({"type": "gateway_error", "message": "ssh failed"})]
         ),

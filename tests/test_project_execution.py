@@ -24,7 +24,7 @@ def client(monkeypatch):
 
 
 def test_slack_conversations_are_rejected_since_they_run_on_the_mac(client, monkeypatch):
-    monkeypatch.setattr(run_task, "run_remote_claude", lambda *args, **kwargs: pytest.fail("no remote run"))
+    monkeypatch.setattr(run_task, "run_remote_agent", lambda *args, **kwargs: pytest.fail("no remote run"))
     for values in ({"source": "kobito-slack"},
                    {"source": "kobito-slack", "project_id": "project-a", "repo": "repo",
                     "execution_mode": "conversation"},
@@ -35,13 +35,13 @@ def test_slack_conversations_are_rejected_since_they_run_on_the_mac(client, monk
 
 def test_remote_runner_refuses_conversation_mode():
     with pytest.raises(ValueError):
-        next(ssh_runner.run_remote_claude("x", None, "repo", project_id="p", execution_mode="conversation"))
+        next(ssh_runner.run_remote_agent("x", None, "repo", project_id="p", execution_mode="conversation"))
 
 
 def test_dispatch_no_enabled_project_does_not_start_an_ai_run(client, monkeypatch):
     monkeypatch.setattr(config, "KOBITO_PROJECT_DISPATCH_ENABLED", True)
     monkeypatch.setattr(run_task, "select_kobito_project", lambda: (0, "null"))
-    monkeypatch.setattr(run_task, "run_remote_claude", lambda *args: pytest.fail("no work slot"))
+    monkeypatch.setattr(run_task, "run_remote_agent", lambda *args: pytest.fail("no work slot"))
     response = client.post("/api/run", json={"source": "kobito", "prompt": "定期実行"})
     assert response.status_code == 200 and b"No enabled project" in response.data
     response = client.post("/api/run", json={"prompt": "~/repos/kobito/OPERATING.mdを読んで一巡"})
@@ -53,7 +53,7 @@ def test_dispatch_timeout_stops_without_starting_global_work(client, monkeypatch
     def timeout():
         raise subprocess.TimeoutExpired("ssh", 15)
     monkeypatch.setattr(run_task, "select_kobito_project", timeout)
-    monkeypatch.setattr(run_task, "run_remote_claude", lambda *args: pytest.fail("must stop"))
+    monkeypatch.setattr(run_task, "run_remote_agent", lambda *args: pytest.fail("must stop"))
     assert client.post("/api/run", json={"source": "kobito", "prompt": "work"}).status_code == 503
 
 
@@ -81,7 +81,7 @@ def test_ssh_work_uses_registered_project_executor_instead_of_arbitrary_cd(monke
     monkeypatch.setattr(ssh_runner, "run_remote_preflight", lambda repo: {"overall": "OK"})
     monkeypatch.setattr(ssh_runner, "_with_agent_credentials", lambda cmd: cmd)
     monkeypatch.setattr(ssh_runner.subprocess, "Popen", lambda cmd, **kwargs: (commands.append(cmd), Process())[1])
-    list(ssh_runner.run_remote_claude("hello", repo="repo", project_id="project-a", execution_mode="work"))
+    list(ssh_runner.run_remote_agent("hello", repo="repo", project_id="project-a", execution_mode="work"))
     remote = commands[0][-1]
     assert "project_slack.py exec --project-id project-a --repo repo --mode work" in remote
     assert "cd " not in remote

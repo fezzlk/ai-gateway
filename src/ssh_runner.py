@@ -10,6 +10,8 @@ import config
 # one path segment below MAC_REPOS_ROOT -- there is no "../" to construct
 # without a slash in the input.
 _REPO_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# Absolute executable path reported by the Mac; no shell metacharacters or "..".
+_BIN_PATH_RE = re.compile(r"^/(?!.*\.\.)[A-Za-z0-9._/-]+$")
 
 
 def is_valid_repo_name(repo: str) -> bool:
@@ -28,6 +30,36 @@ def select_kobito_project():
     return run_remote_command(
         f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} next-project", timeout=15
     )
+
+
+def select_kobito_agent():
+    """Read which CLI runs kobito's scheduled work from the Mac's private config.
+
+    Raises ValueError when the answer is unavailable or malformed; callers must
+    then start nothing rather than guess an agent.
+    """
+    code, output = run_remote_command(
+        f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} agent", timeout=15
+    )
+    if code:
+        raise ValueError("agent selection failed")
+    selected = json.loads(output)
+    if selected.get("agent") == "claude":
+        return {"agent": "claude"}
+    codex_bin = selected.get("bin")
+    if selected.get("agent") == "codex" and isinstance(codex_bin, str) and _BIN_PATH_RE.match(codex_bin):
+        return {"agent": "codex", "bin": codex_bin}
+    raise ValueError("invalid agent selection")
+
+
+def build_codex_cmdline(prompt: str, codex_bin: str) -> str:
+    # Same autonomy as the owner's Codex defaults (no approvals, full access),
+    # stated explicitly so the run does not depend on ~/.codex/config.toml.
+    return " ".join([
+        shlex.quote(codex_bin), "exec", "--json", "--skip-git-repo-check",
+        "-s", "danger-full-access", "-c", shlex.quote('approval_policy="never"'),
+        shlex.quote(prompt),
+    ])
 
 
 def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
@@ -67,7 +99,7 @@ def _build_ssh_cmd(remote_cmd: str) -> list:
 
 def run_remote_command(remote_cmd: str, timeout: Optional[int] = None):
     """Runs an arbitrary command on the Mac over the same Tailscale SSH hop
-    as run_remote_claude(), blocking until it finishes. Returns
+    as run_remote_agent(), blocking until it finishes. Returns
     (returncode, combined_stdout_stderr) instead of streaming -- callers
     that just need a short command's result (e.g. `board.py add ...`) don't
     need SSE plumbing.
@@ -144,12 +176,13 @@ def run_remote_preflight(repo: Optional[str] = None):
     return payload
 
 
-def run_remote_claude(
+def run_remote_agent(
     prompt: str,
     resume_session_id: Optional[str] = None,
     repo: Optional[str] = None,
     project_id: Optional[str] = None,
     execution_mode: Optional[str] = None,
+    agent: Optional[dict] = None,
 ):
     """Runs `claude -p ...` on the Mac over an IAP-free Tailscale SSH hop,
     yielding stdout lines as they arrive.
@@ -173,7 +206,10 @@ def run_remote_claude(
         )
         return
 
-    command = build_claude_cmdline(prompt, resume_session_id)
+    if agent and agent.get("agent") == "codex":
+        command = build_codex_cmdline(prompt, agent["bin"])
+    else:
+        command = build_claude_cmdline(prompt, resume_session_id)
     if project_id:
         command = (
             f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} exec "

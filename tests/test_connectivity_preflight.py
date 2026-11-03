@@ -72,7 +72,7 @@ def test_remote_claude_does_not_start_when_blocked(monkeypatch):
         "Popen",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not start")),
     )
-    events = list(ssh_runner.run_remote_claude("work", repo="agent-kit"))
+    events = list(ssh_runner.run_remote_agent("work", repo="agent-kit"))
     assert json.loads(events[0])["type"] == "connectivity_preflight"
     assert json.loads(events[1])["type"] == "gateway_error"
 

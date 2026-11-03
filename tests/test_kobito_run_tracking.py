@@ -22,7 +22,7 @@ def test_kobito_request_records_start_and_finish(monkeypatch):
 
     monkeypatch.setattr(run_task, "_board_command", fake_board)
     monkeypatch.setattr(
-        run_task, "run_remote_claude",
+        run_task, "run_remote_agent",
         lambda *args, **kwargs: iter([json.dumps({"type": "result", "result": "done"})]),
     )
 
@@ -49,7 +49,7 @@ def test_kobito_gateway_error_records_failed(monkeypatch):
 
     monkeypatch.setattr(run_task, "_board_command", fake_board)
     monkeypatch.setattr(
-        run_task, "run_remote_claude",
+        run_task, "run_remote_agent",
         lambda *args, **kwargs: iter([json.dumps({"type": "gateway_error", "message": "ssh failed"})]),
     )
 

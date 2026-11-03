@@ -34,7 +34,7 @@ when both its ID and secret are configured.
 | `LIFF_ID` | LIFF app ID used by `/usage.html`; empty disables LIFF |
 | `EXECUTION_ENABLED` | Global execution kill switch |
 | `CLAUDE_ENABLED` | Enable the currently implemented Claude executor |
-| `CODEX_ENABLED` | Advertise Codex availability (executor not yet implemented) |
+| `CODEX_ENABLED` | Allow kobito runs to use Codex when the Mac selects it (FEZ-143) |
 | `USAGE_PRIVATE_ONLY` | Keep `/api/usage` restricted to allowlisted identities |
 
 OAuth secrets belong in Secret Manager (`SESSION_SECRET`,
@@ -66,6 +66,8 @@ Board・kobitoの通知と承認はSlackに一本化した。LINE Messaging API�
 ### kobito実行監視
 
 `/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoard（通知はSlack）へ送る。正常終了時にその障害項目を自動解消する。
+
+kobitoの実行に使うagent（Claude Code / Codex）は、実行のたびにMacの`project_slack.py agent`（`~/.config/kobito/projects.json`の`agent`）で決まる。切り替えにデプロイは要らない。決まったagentはその実行の最後まで固定し、失敗しても、もう一方のagentでは実行しない。選択を読めないとき、またはCodexが選ばれたのに`CODEX_ENABLED`がfalseのときは、503を返して何も始めない。Boardの実行記録のtriggerは`cloud-scheduler/<agent>`、SSEの最初のイベントは`agent_selected`。CodexはMacの`codex_bin`で`codex exec --json -s danger-full-access -c approval_policy="never"`として実行する。
 
 `POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。異常（stale・missing・degraded）やMacに接続できないときは、このサービスから直接SlackのDM（`SLACK_BOT_TOKEN`のボット、宛先は`SLACK_ALERT_USER_ID`）で通知する。Macが止まっていても届くようにするため、Mac側の受付を経由しない（FEZ-282）。Boardには記録だけを残し、Board経由の通知はしない。
 
