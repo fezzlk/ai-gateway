@@ -27,7 +27,7 @@ def add_span_processor(processor):
 
 @contextmanager
 def traced_claude_run(source, repo):
-    """Wraps one `run_remote_claude` execution in a span.
+    """Wraps one `run_remote_agent` execution in a span.
 
     Deliberately excludes prompt text: only routing metadata (source,
     repo) plus duration/error outcome are recorded as attributes.

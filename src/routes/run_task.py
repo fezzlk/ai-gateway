@@ -10,8 +10,8 @@ import config
 from claude_stream import to_sse_frames
 from slack_alert import send_dm
 from ssh_runner import (
-    is_valid_repo_name, is_valid_project_id, run_remote_claude,
-    run_remote_command, select_kobito_project,
+    is_valid_repo_name, is_valid_project_id, run_remote_agent,
+    run_remote_command, select_kobito_agent, select_kobito_project,
 )
 from telemetry import traced_claude_run
 
@@ -73,13 +73,14 @@ def kobito_health():
 
 
 class _KobitoRunTracker:
-    def __init__(self):
+    def __init__(self, agent="claude"):
+        self.agent = agent
         self.run_id = None
         self.stop_event = threading.Event()
         self.thread = None
 
     def start(self):
-        code, output = _board_command("run", "start", "--source", "kobito", "--trigger", "cloud-scheduler")
+        code, output = _board_command("run", "start", "--source", "kobito", "--trigger", f"cloud-scheduler/{self.agent}")
         if code:
             logger.warning("could not record kobito run start: exit=%s", code)
             return
@@ -93,7 +94,7 @@ class _KobitoRunTracker:
 
     def _heartbeat_loop(self):
         while not self.stop_event.wait(config.KOBITO_HEARTBEAT_SECONDS):
-            self.heartbeat("claude_running", "Claude Codeセッションを実行中")
+            self.heartbeat(f"{self.agent}_running", f"{self.agent}セッションを実行中")
 
     def heartbeat(self, phase, summary):
         if not self.run_id:
@@ -122,7 +123,7 @@ class _KobitoRunTracker:
                 "add", "--direction", "agent-to-user", "--from", "kobito",
                 "--type", "action_required", "--dedupe-key", "kobito-health",
                 "--title", "kobito実行基盤の確認が必要です",
-                "--body", f"原因: {summary}\n影響: 今回のkobito作業は開始または完了できませんでした。\n"
+                "--body", f"原因: {summary}\nエージェント: {self.agent}\n影響: 今回のkobito作業は開始または完了できませんでした。\n"
                 "対処: Macの起動、Tailscale、SSH接続、接続preflightの順に確認してください。\n"
                 "再試行: 次の3時間ごとの定期実行で自動再試行します。",
             )
@@ -158,6 +159,16 @@ def run_task():
     if execution_mode not in (None, "work"):
         return {"error": "invalid execution mode"}, 400
 
+    agent = {"agent": "claude"}
+    if _is_kobito_run(prompt, source):
+        # The agent is fixed for the whole run; a failure never retries on the other one.
+        try:
+            agent = select_kobito_agent()
+        except (ValueError, TypeError, AttributeError, OSError, subprocess.TimeoutExpired):
+            return {"error": "agent selection unavailable; no work started"}, 503
+        if agent["agent"] == "codex" and not config.CODEX_ENABLED:
+            return {"error": "codex is disabled on this gateway; no work started"}, 503
+
     if _is_kobito_run(prompt, source) and config.KOBITO_PROJECT_DISPATCH_ENABLED and not project_id:
         try:
             code, output = select_kobito_project()
@@ -183,20 +194,23 @@ def run_task():
         return {"error": "invalid repo name"}, 400
 
     def generate():
-        tracker = _KobitoRunTracker() if _is_kobito_run(prompt, source) else None
+        tracker = _KobitoRunTracker(agent["agent"]) if _is_kobito_run(prompt, source) else None
         failed = False
         failure_message = None
         if tracker:
             tracker.start()
         with traced_claude_run(source, repo) as span:
             try:
+                scope = {"agent": agent} if tracker else {}
+                if tracker:
+                    yield from to_sse_frames([json.dumps({"type": "agent_selected", "agent": agent["agent"]})])
                 if project_id:
-                    raw_lines = run_remote_claude(
+                    raw_lines = run_remote_agent(
                         prompt, resume_session_id, repo,
-                        project_id=project_id, execution_mode=execution_mode,
+                        project_id=project_id, execution_mode=execution_mode, **scope,
                     )
                 else:
-                    raw_lines = run_remote_claude(prompt, resume_session_id, repo)
+                    raw_lines = run_remote_agent(prompt, resume_session_id, repo, **scope)
                 for line in raw_lines:
                     try:
                         event = json.loads(line)
@@ -205,6 +219,11 @@ def run_task():
                     if event.get("type") == "gateway_error":
                         failed = True
                         failure_message = event.get("message") or "gateway error"
+                    elif event.get("type") == "turn.failed":
+                        # Codex reports a failed turn (e.g. usage limit) as an event.
+                        failed = True
+                        failure_message = "codex turn failed: " + str(
+                            (event.get("error") or {}).get("message", ""))[:300]
                     yield from to_sse_frames([line])
             except Exception as error:
                 failed = True
@@ -216,7 +235,7 @@ def run_task():
                     tracker.finish(
                         "failed" if failed else "completed",
                         failure_message or "gatewayまたはSSHエラーで終了"
-                        if failed else "Claude Codeセッションが終了",
+                        if failed else f"{agent['agent']}セッションが終了",
                     )
 
     return Response(
