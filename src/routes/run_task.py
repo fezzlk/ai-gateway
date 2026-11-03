@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 def _is_kobito_run(prompt, source):
-    if source == "kobito-slack":
-        return False
     return source == "kobito" or "kobito/OPERATING.md" in prompt
 
 
@@ -140,13 +138,11 @@ def run_task():
         not isinstance(project_id, str) or not is_valid_project_id(project_id)
     ):
         return {"error": "invalid project ID"}, 400
-    if execution_mode not in (None, "conversation", "work"):
+    if source == "kobito-slack" or execution_mode == "conversation":
+        # Slack conversations run directly on the Mac since FEZ-281.
+        return {"error": "Slack conversations are no longer served by the gateway"}, 400
+    if execution_mode not in (None, "work"):
         return {"error": "invalid execution mode"}, 400
-    if source == "kobito-slack":
-        if not project_id or not repo or execution_mode != "conversation":
-            return {"error": "Slack conversations require project, repo and conversation mode"}, 400
-    if execution_mode == "conversation" and not project_id:
-        return {"error": "conversation mode requires project ID"}, 400
 
     if _is_kobito_run(prompt, source) and config.KOBITO_PROJECT_DISPATCH_ENABLED and not project_id:
         try:

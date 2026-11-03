@@ -30,7 +30,7 @@ def select_kobito_project():
     )
 
 
-def build_claude_cmdline(prompt: str, resume_session_id: Optional[str], execution_mode=None) -> str:
+def build_claude_cmdline(prompt: str, resume_session_id: Optional[str]) -> str:
     parts = [
         config.CLAUDE_BIN,
         "-p",
@@ -41,19 +41,10 @@ def build_claude_cmdline(prompt: str, resume_session_id: Optional[str], executio
         "--include-partial-messages",
     ]
 
-    if execution_mode == "conversation":
-        # Conversations may inspect the assigned repository, but cannot turn a
-        # Slack request into an implementation or invoke an installed MCP writer.
-        parts += [
-            "--restricted", "--tools", "Read,Glob,Grep", "--strict-mcp-config", "--mcp-config",
-            shlex.quote('{"mcpServers":{}}'), "--disable-slash-commands",
-            "--permission-mode", "plan", "--settings",
-            shlex.quote('{"disableAllHooks":true}'),
-        ]
-    elif config.CLAUDE_ALLOWED_TOOLS:
+    if config.CLAUDE_ALLOWED_TOOLS:
         parts += ["--allowedTools", shlex.quote(config.CLAUDE_ALLOWED_TOOLS)]
 
-    if execution_mode != "conversation" and config.CLAUDE_PERMISSION_MODE:
+    if config.CLAUDE_PERMISSION_MODE:
         parts += ["--permission-mode", shlex.quote(config.CLAUDE_PERMISSION_MODE)]
 
     if resume_session_id:
@@ -169,10 +160,8 @@ def run_remote_claude(
     """
     if project_id and (not is_valid_project_id(project_id) or not repo):
         raise ValueError("project-scoped execution requires a valid project ID and repo")
-    if execution_mode not in (None, "conversation", "work"):
+    if execution_mode not in (None, "work"):
         raise ValueError("invalid execution mode")
-    if execution_mode == "conversation" and not project_id:
-        raise ValueError("conversation execution requires a project")
     preflight = run_remote_preflight(repo)
     yield json.dumps({"type": "connectivity_preflight", **preflight})
     if preflight.get("overall") == "BLOCKED":
@@ -184,7 +173,7 @@ def run_remote_claude(
         )
         return
 
-    command = build_claude_cmdline(prompt, resume_session_id, execution_mode)
+    command = build_claude_cmdline(prompt, resume_session_id)
     if project_id:
         command = (
             f"python3 {_remote_path(config.KOBITO_PROJECT_RUNNER)} exec "
