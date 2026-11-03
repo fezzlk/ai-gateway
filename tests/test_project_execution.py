@@ -23,37 +23,19 @@ def client(monkeypatch):
     return app.test_client()
 
 
-def test_slack_conversations_must_include_scope_and_read_only_mode(client):
-    for values in ({}, {"project_id": "project-a", "repo": "repo"},
-                   {"project_id": "project-a", "repo": "repo", "execution_mode": "work"}):
-        response = client.post("/api/run", json={"source": "kobito-slack", "prompt": "相談", **values})
+def test_slack_conversations_are_rejected_since_they_run_on_the_mac(client, monkeypatch):
+    monkeypatch.setattr(run_task, "run_remote_claude", lambda *args, **kwargs: pytest.fail("no remote run"))
+    for values in ({"source": "kobito-slack"},
+                   {"source": "kobito-slack", "project_id": "project-a", "repo": "repo",
+                    "execution_mode": "conversation"},
+                   {"project_id": "project-a", "repo": "repo", "execution_mode": "conversation"}):
+        response = client.post("/api/run", json={"prompt": "相談", **values})
         assert response.status_code == 400
 
 
-def test_conversation_mode_removes_writers_mcp_hooks_and_bypass_permissions(monkeypatch):
-    monkeypatch.setattr(config, "CLAUDE_PERMISSION_MODE", "bypassPermissions")
-    command = shlex.split(ssh_runner.build_claude_cmdline("相談", None, "conversation"))
-    assert command[command.index("--tools") + 1] == "Read,Glob,Grep"
-    assert "--restricted" in command and "--strict-mcp-config" in command
-    assert command[command.index("--permission-mode") + 1] == "plan"
-    assert "bypassPermissions" not in command
-    assert json.loads(command[command.index("--settings") + 1])["disableAllHooks"] is True
-
-
-def test_slack_run_forwards_scope_without_claiming_scheduler_health(client, monkeypatch):
-    calls = []
-    def run(*args, **kwargs):
-        calls.append((args, kwargs))
-        return iter([json.dumps({"type": "result", "result": "回答"})])
-    monkeypatch.setattr(run_task, "run_remote_claude", run)
-    monkeypatch.setattr(run_task, "_board_command", lambda *args: pytest.fail("chat is not a scheduler run"))
-    response = client.post("/api/run", json={
-        "source": "kobito-slack", "prompt": "kobito/OPERATING.mdについて相談", "project_id": "project-a",
-        "repo": "repo", "execution_mode": "conversation",
-    })
-    assert response.status_code == 200
-    response.get_data()
-    assert calls[0][1] == {"project_id": "project-a", "execution_mode": "conversation"}
+def test_remote_runner_refuses_conversation_mode():
+    with pytest.raises(ValueError):
+        next(ssh_runner.run_remote_claude("x", None, "repo", project_id="p", execution_mode="conversation"))
 
 
 def test_dispatch_no_enabled_project_does_not_start_an_ai_run(client, monkeypatch):
