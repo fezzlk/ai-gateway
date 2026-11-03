@@ -67,6 +67,6 @@ Board・kobitoの通知と承認はSlackに一本化した。LINE Messaging API�
 
 `/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoard（通知はSlack）へ送る。正常終了時にその障害項目を自動解消する。
 
-`POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。
+`POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。異常（stale・missing・degraded）やMacに接続できないときは、このサービスから直接SlackのDM（`SLACK_BOT_TOKEN`のボット、宛先は`SLACK_ALERT_USER_ID`）で通知する。Macが止まっていても届くようにするため、Mac側の受付を経由しない（FEZ-282）。Boardには記録だけを残し、Board経由の通知はしない。
 
 監視ジョブを追加する場合も既存の`ai-gateway`・単一リージョンを利用し、Cloud Runのmin instancesやCPU設定は変更しない。

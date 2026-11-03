@@ -8,6 +8,7 @@ from flask import Blueprint, Response, jsonify, request, stream_with_context
 
 import config
 from claude_stream import to_sse_frames
+from slack_alert import send_dm
 from ssh_runner import (
     is_valid_repo_name, is_valid_project_id, run_remote_claude,
     run_remote_command, select_kobito_project,
@@ -22,9 +23,17 @@ def _is_kobito_run(prompt, source):
     return source == "kobito" or "kobito/OPERATING.md" in prompt
 
 
-def _board_command(*parts):
+def _board_command(*parts, notify=True):
     command = " ".join(shlex.quote(str(part)) for part in parts)
-    return run_remote_command(f"python3 {config.HUMAN_AGENT_BOARD_CLI} {command}", timeout=15)
+    # The health alert is delivered as a Slack DM from here, so the Board copy stays silent.
+    prefix = "" if notify else "HUMAN_AGENT_NOTIFICATION_BACKEND=none "
+    return run_remote_command(f"{prefix}python3 {config.HUMAN_AGENT_BOARD_CLI} {command}", timeout=15)
+
+
+_HEALTH_CHECK_STEPS = (
+    "Macで `launchctl print gui/$(id -u)/com.fezzlk.kobito-project-slack` と "
+    "`python3 ~/repos/human-agent-board/board.py run list --source kobito` を確認してください。"
+)
 
 
 @run_task_blueprint.route("/kobito-health", methods=["POST"])
@@ -34,23 +43,28 @@ def kobito_health():
         "--stale-after", "900", "--missing-after", "14400",
     )
     if code:
+        send_dm("[kobito] Macに接続できません（停止検知）。Macの電源・スリープ・Tailscaleを確認してください。")
         return jsonify(health="unreachable", error="human-agent-board could not be reached"), 503
     try:
         health = json.loads(output)
     except json.JSONDecodeError:
+        send_dm("[kobito] 稼働状態を読み取れません（停止検知）。" + _HEALTH_CHECK_STEPS)
         return jsonify(health="unreachable", error="invalid human-agent-board response"), 503
 
     state = health.get("health")
     if state in ("stale", "missing", "degraded"):
+        summary = (
+            f"稼働状態は{state}、最終確認は{health.get('last_seen_at') or 'なし'}、"
+            f"連続失敗は{health.get('consecutive_failures', 0)}回です。"
+        )
         _board_command(
             "add", "--direction", "agent-to-user", "--from", "kobito",
             "--type", "action_required", "--dedupe-key", "kobito-health",
             "--title", "kobitoの稼働確認が必要です",
-            "--body",
-            f"稼働状態は{state}、最終確認は{health.get('last_seen_at') or 'なし'}、"
-            f"連続失敗は{health.get('consecutive_failures', 0)}回です。"
-            "Slackの#p-kobitoと、Macの受付ログで直近エラーと対処方法を確認してください。",
+            "--body", summary + _HEALTH_CHECK_STEPS,
+            notify=False,
         )
+        send_dm("[kobito] 稼働確認が必要です（停止検知）。" + summary + _HEALTH_CHECK_STEPS)
     elif state in ("healthy", "running"):
         _board_command(
             "resolve", "--direction", "agent-to-user", "--dedupe-key", "kobito-health"

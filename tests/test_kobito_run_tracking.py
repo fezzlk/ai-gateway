@@ -69,7 +69,7 @@ def test_kobito_health_opens_deduplicated_action_request(monkeypatch):
     app.register_blueprint(run_task.run_task_blueprint)
     calls = []
 
-    def fake_board(*parts):
+    def fake_board(*parts, **kwargs):
         calls.append(parts)
         if "list" in parts:
             return 0, json.dumps({
@@ -79,6 +79,7 @@ def test_kobito_health_opens_deduplicated_action_request(monkeypatch):
         return 0, "{}"
 
     monkeypatch.setattr(run_task, "_board_command", fake_board)
+    monkeypatch.setattr(run_task, "send_dm", lambda text: True)
     response = app.test_client().post("/api/kobito-health")
 
     assert response.status_code == 200
