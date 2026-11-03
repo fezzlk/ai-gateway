@@ -9,12 +9,10 @@ substitutions:
   _MAC_SSH_HOST: ""
   _MAC_SSH_USER: ""
   _MAC_SSH_KNOWN_HOST_LINE: ""
-  # LINE userId authorized to trigger board.py writes via /line/webhook
-  # postbacks (see routes/line_webhook.py). Same "non-secret but personal,
-  # real value only on the trigger" treatment as the MAC_SSH_* vars above.
+  # Fallback LINE Login allowlist (see auth.py). Same "non-secret but
+  # personal, real value only on the trigger" treatment as the MAC_SSH_* vars.
   _LINE_AUTHORIZED_USER_ID: ""
-  # Whether the setpriority LINE postback (and any SSH-injected Linear MCP
-  # write) is permitted to write to Linear. Non-secret opt-in flag, real
+  # Whether SSH-injected Linear MCP writes are permitted. Non-secret opt-in flag, real
   # value only on the trigger, same treatment as the vars above.
   _LINEAR_WRITE_ALLOWED: ""
   # Web authentication and per-environment executor availability.
@@ -86,7 +84,7 @@ steps:
       # delimiter, so the delimiter is switched to "@" (gcloud's
       # "^delim^..." syntax) for this flag.
       - "--set-env-vars=^@^MAC_SSH_HOST=${_MAC_SSH_HOST}@MAC_SSH_USER=${_MAC_SSH_USER}@MAC_SSH_KNOWN_HOST_LINE=${_MAC_SSH_KNOWN_HOST_LINE}@CLAUDE_BIN=${_CLAUDE_BIN}@CLAUDE_ALLOWED_TOOLS=${_CLAUDE_ALLOWED_TOOLS}@LINE_AUTHORIZED_USER_ID=${_LINE_AUTHORIZED_USER_ID}@LINEAR_WRITE_ALLOWED=${_LINEAR_WRITE_ALLOWED}@AUTH_MODE=${_AUTH_MODE}@ACCESS_MODE=${_ACCESS_MODE}@GOOGLE_OAUTH_CLIENT_ID=${_GOOGLE_OAUTH_CLIENT_ID}@LINE_LOGIN_CHANNEL_ID=${_LINE_LOGIN_CHANNEL_ID}@LIFF_ID=${_LIFF_ID}@AUTHORIZED_GOOGLE_EMAILS=${_AUTHORIZED_GOOGLE_EMAILS}@AUTHORIZED_LINE_USER_IDS=${_AUTHORIZED_LINE_USER_IDS}@EXECUTION_ENABLED=${_EXECUTION_ENABLED}@CLAUDE_ENABLED=${_CLAUDE_ENABLED}@CODEX_ENABLED=${_CODEX_ENABLED}@KOBITO_PROJECT_DISPATCH_ENABLED=${_KOBITO_PROJECT_DISPATCH_ENABLED}@USAGE_PRIVATE_ONLY=${_USAGE_PRIVATE_ONLY}"
-      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,SESSION_SECRET=SESSION_SECRET:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,LINE_LOGIN_CHANNEL_SECRET=LINE_LOGIN_CHANNEL_SECRET:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest,LINE_CHANNEL_SECRET=LINE_CHANNEL_SECRET:latest,LINE_CHANNEL_ACCESS_TOKEN=LINE_CHANNEL_ACCESS_TOKEN:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest"
+      - "--set-secrets=AI_GATEWAY_SHARED_TOKEN=AI_GATEWAY_SHARED_TOKEN:latest,SESSION_SECRET=SESSION_SECRET:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,LINE_LOGIN_CHANNEL_SECRET=LINE_LOGIN_CHANNEL_SECRET:latest,TAILSCALE_AUTHKEY=TAILSCALE_AUTHKEY:latest,CLAUDE_CODE_OAUTH_TOKEN=CLAUDE_CODE_OAUTH_TOKEN:latest,GITHUB_PERSONAL_ACCESS_TOKEN=GITHUB_PERSONAL_ACCESS_TOKEN:latest,/secrets/mac_ssh_key=MAC_SSH_PRIVATE_KEY:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest"
     waitFor: ["push"]
 
   - id: "smoke-test"

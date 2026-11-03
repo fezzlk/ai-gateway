@@ -76,21 +76,12 @@ KOBITO_PROJECT_RUNNER = os.environ.get(
     "KOBITO_PROJECT_RUNNER", "~/repos/kobito/scripts/project_slack.py"
 )
 
-# LINE Messaging API channel used for human-agent-board's /line/webhook route
-# (see routes/line_webhook.py). LINE_CHANNEL_ACCESS_TOKEN here is only used
-# to send the reply confirmation -- the push notification itself is sent
-# directly from board.py on the Mac, not through this service.
-LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
-# Fixed LINE userId allowed to trigger board.py writes via postback. Anything
-# from a different userId is silently ignored -- this is the trust boundary
-# that makes accepting an external webhook safe (see line_webhook.py).
+# Fallback LINE Login allowlist when AUTHORIZED_LINE_USER_IDS is empty (see
+# auth.py). The LINE Messaging webhook that also used it was removed (FEZ-273).
 LINE_AUTHORIZED_USER_ID = os.environ.get("LINE_AUTHORIZED_USER_ID", "")
 
-# Personal Linear API key, used directly by this process (not just injected
-# into SSH sessions) to call Linear's GraphQL API for the setpriority
-# postback -- see line_webhook.py's _set_linear_priority().
+# Personal Linear API key injected into SSH sessions for kobito's Linear access.
 LINEAR_API_KEY = os.environ.get("LINEAR_API_KEY", "")
-# Explicit opt-in gate: the setpriority postback refuses to write to Linear
+# Explicit opt-in flag passed to SSH sessions; Linear writes are refused
 # unless this is set, even if LINEAR_API_KEY is present.
 LINEAR_WRITE_ALLOWED = os.environ.get("LINEAR_WRITE_ALLOWED", "")

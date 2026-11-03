@@ -59,28 +59,13 @@ in a Secure, HttpOnly, SameSite=Lax signed cookie for 30 days.
 
 kobitoの実行はMac（Tailscale経由のSSH）だけで行う。Macが止まっている間の代わりの実行環境（GCP VMフォールバック）は、2026-11-01に不要と判断して撤去した（FEZ-266）。
 
-## LINEでBoardを確認・管理する
+## Board通知
 
-human-agent-boardとkobitoを設定済みの環境では、認可済みユーザーがLINE BotからBoard全体をFlex Messageで確認・管理できる。
-
-- `board` / `ボード`: 判断待ち、依頼・通知、kobito進行状況の件数と概要
-- `判断待ち` / `decisions`: 判断材料リンクを開き、その場で承認・却下
-- `依頼` / `requests`: 依頼・通知を確認し、処理済みに変更
-- `kobito状況` / `kobito status`: 進行中と直近の完了・失敗、次の作業、関連リンク
-- `VM履歴` / `VMログ` / `vm history`: fallback VMの作成・削除の成功・失敗を直近10件表示
-
-リッチメニューを設定すると、上記のうち`board`、`判断待ち`、`kobito状況`を常時ボタンから開ける。画像生成と設定は次の通り。
-
-```bash
-rsvg-convert -w 2500 -h 843 assets/line-rich-menu.svg -o assets/line-rich-menu.png
-LINE_CHANNEL_ACCESS_TOKEN=... python3 scripts/setup_line_rich_menu.py assets/line-rich-menu.png
-```
-
-問い合わせはLINE署名検証と`LINE_AUTHORIZED_USER_ID`照合を通過したユーザーだけが実行できる。タスク・優先度・正式な完了状態の正本はLinearであり、返信内容はkobitoが更新するリアルタイム状態のスナップショットとして扱う。
+Board・kobitoの通知と承認はSlackに一本化した。LINE Messaging APIのwebhook（`/line/webhook`）、リッチメニュー、「kobito状況」の問い合わせは2026-11に撤去した（FEZ-273）。LINE Login（usage画面のログイン）は引き続き使う。
 
 ### kobito実行監視
 
-`/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoardとLINEへ送る。正常終了時にその障害項目を自動解消する。
+`/api/run`がkobitoの固定プロンプトまたは`source: "kobito"`を受け取ると、Mac上のhuman-agent-boardへ実行開始、60秒heartbeat、正常・異常終了を自動記録する。gateway/SSHエラーでは同一障害を重複させず、ユーザー対応依頼をBoard（通知はSlack）へ送る。正常終了時にその障害項目を自動解消する。
 
 `POST /api/kobito-health`は、heartbeatが15分以上停止した実行、4時間以上起動が確認できない状態、連続失敗を検査する。別のCloud Scheduler等から15分間隔で呼び出すことで、通常のkobitoトリガー自体が止まった場合も検知できる。認証は他の`/api/*`と同じBearer tokenを使う。
 
