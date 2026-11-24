@@ -59,6 +59,27 @@ in a Secure, HttpOnly, SameSite=Lax signed cookie for 30 days.
 
 kobitoの実行はMac（Tailscale経由のSSH）だけで行う。Macが止まっている間の代わりの実行環境（GCP VMフォールバック）は、2026-11-01に不要と判断して撤去した（FEZ-266）。
 
+### Tailscale authentication
+
+コンテナは起動のたびに、環境変数 `TAILSCALE_AUTHKEY`（Secret Managerの値）でtailnetに参加する（`scripts/start.sh`）。この値には2種類使える。
+
+| 値 | 先頭 | 期限 | 備考 |
+|---|---|---|---|
+| 認証キー | `tskey-auth-` | 最長90日 | 切れると起動できなくなる（更新が必要） |
+| OAuthクライアントのシークレット | `tskey-client-` | 認証キーの90日制限は受けない | 起動のたびにTailscaleが短命の認証キーを作るので、更新作業が要らない（推奨） |
+
+OAuthクライアントのシークレットを使うときは、次を用意する。
+
+1. tailnetのポリシーファイルの `tagOwners` に、使うタグ（既定は `tag:ai-gateway`）を追加する。
+2. ポリシーファイルのACLで、そのタグのノードからSSH先（Mac）への接続を許可する。タグ付きのノードはユーザー所有のノードとは別に扱われる。
+3. 管理画面（Settings → OAuth clients）で、スコープ `auth_keys`（Write）とそのタグを持つOAuthクライアントを作り、表示されたシークレット（一度しか表示されない）を `TAILSCALE_AUTHKEY` に入れる。
+
+`tskey-client-` で始まる値のときだけ、スクリプトは `?ephemeral=true&preauthorized=true` を付け、`--advertise-tags` を渡す。タグは環境変数 `TAILSCALE_TAGS`（カンマ区切り）で変えられる。ノード名は `TAILSCALE_HOSTNAME`（既定 `ai-gateway-cloudrun`）。登録されたノードは ephemeral なので、停止すると管理画面から消える。
+
+値を入れ替えるには、Secretに新しいバージョンを追加する。`latest` を参照しているので、再デプロイは要らず、次のインスタンスの起動から使われる。認証キーが期限切れ・無効のときの症状は、起動ログの `invalid key`、Cloud Runの起動失敗、`/api/run` の503。
+
+OAuthクライアントのシークレットは無期限とは限らない。有効期限や取り消し・ローテーションの方法は、Tailscaleの [OAuth clients](https://tailscale.com/docs/features/oauth-clients) で確認する。
+
 ## Board通知
 
 Board・kobitoの通知と承認はSlackに一本化した。LINE Messaging APIのwebhook（`/line/webhook`）、リッチメニュー、「kobito状況」の問い合わせは2026-11に撤去した（FEZ-273）。LINE Login（usage画面のログイン）は引き続き使う。
